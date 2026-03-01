@@ -1,6 +1,51 @@
-# Phoenix OS - Claude Code Instructions
+# Chronos — Claude Code Instructions
 
 > Project-level instructions for Claude Code when working in this repository
+
+---
+
+## Naming & Branding Hierarchy
+
+| Layer | Name | What It Is |
+|-------|------|-----------|
+| **Philosophy** | **IDD** — Intent-Driven Design | Mental model for building anything intent-first |
+| **Philosophical Models** | **PCAM** — Perception, Cognition, Agency, Manifestation | Structural thinking model — how systems are shaped |
+| **Philosophical Models** | **The Four Crafts** | Quality bar — what makes each piece excellent |
+| **Methods** | **IDSD** — Intent-Driven Software Development | IDD applied to software development |
+| **Methods** | **Life OS** | IDD applied to personal knowledge management |
+| **Architecture** | **Phoenix** — Pattern Language | Technical DNA: Signal → Recipe → Agent → Skill → Memory |
+| **Products** | **Meridian-OS** | IDSD + Phoenix → software development tool |
+| **Products** | **Chronos** | Life OS + Phoenix + PCAM harness → personal AI & knowledge work |
+
+### PCAM Model (Structural Backbone)
+
+Perception → Cognition → Agency → Manifestation
+
+| Layer | Role | In Chronos |
+|-------|------|-----------|
+| **Perception** | Signals in — how the system receives input | Claude Code, webhooks, chat channels (Telegram/WhatsApp/Discord), heartbeat/cron |
+| **Cognition** | The brain — reasoning, intent detection, orchestration | Intent engine, context engine, recipes (prompt craft), spec engine, agents |
+| **Agency** | Tools out — how the system acts on the world | Sandboxed execution, shell, browser, filesystem, computer control, self-modification |
+| **Manifestation** | Memory — how knowledge is stored and retrieved | LTM (vault: radars + signals), STM (session workspaces), consolidation, search |
+
+### The Four Crafts (Quality Disciplines)
+
+Every recipe must be excellent across all four:
+
+| Craft | What It Means |
+|-------|--------------|
+| **Prompt Crafting** | What the recipe says and does — exhaustive, high-effectiveness prompts with embedded persona, reasoning frameworks, output shapes |
+| **Context Crafting** | What knowledge is available and when — STM built from LTM at recipe start, persisted for session, incrementally updated |
+| **Intent Crafting** | What the user wants to achieve — hierarchical intents with goals, constraints, failure conditions, acceptance criteria, auto-decomposition |
+| **Spec Crafting** | What the knowledge guarantees — structural contracts for vault/radar/signal, recipe generation from specs, eval generation |
+
+### Key Architectural Principles
+
+- **Recipes define WHAT** (the exhaustive prompt), **Agents determine HOW** (execution autonomy)
+- **Memory methods live in the repo**, actual memory data is **external and user-specific**
+- **Specs are structural definitions in markdown** — open-ended conventions, not rigid APIs
+- **Intents are first-class citizens** — hierarchical, auto-decomposable, with completion criteria
+- **Context is built once from LTM at recipe start**, persisted for the session, updated incrementally (add gaps, remove noise)
 
 ---
 
@@ -201,7 +246,7 @@ If NO to any → continue execution silently
 
 ## Memory Architecture
 
-Phoenix OS separates memory into distinct layers with different purposes:
+Chronos separates memory into distinct layers with different purposes. Memory **methods** (how to create, access, manage) live in the repo. Actual memory **data** is external and user-specific — enabling multiple users to run the same harness with their own knowledge.
 
 ### Memory Structure
 
@@ -228,7 +273,7 @@ memory/
 
 | Type | Location | Purpose | Examples |
 |------|----------|---------|----------|
-| **Engine** | `memory/engine/` | Phoenix OS system knowledge — how to orchestrate, classify intents, route | `cto-intents.md`, `sequencing-rules.md`, `recipe-orchestration-pattern.md` |
+| **Engine** | `memory/engine/` | Phoenix Architecture system knowledge — how to orchestrate, classify intents, route | `cto-intents.md`, `sequencing-rules.md`, `recipe-orchestration-pattern.md` |
 | **Vault Radars** | `{user-vault}/radars/` | Classification lenses — keywords for matching, signal mappings | `ai-intelligence.md`, `leadership.md` |
 | **Vault Signals** | `{user-vault}/signals/` | Actual knowledge — mental models, frameworks, practices | `augmentation-principle.md`, `flywheel.md` |
 | **STM** | `.phoenix-os/stm/` | Runtime state — ephemeral, per-session, pre-populated with signals | `state.md`, `context.md`, `intents.md` |
@@ -238,17 +283,24 @@ memory/
 ## Project Structure
 
 ```
-phoenixOS/
-├── agents/              # Agent definitions
+chronos/                             # Monorepo
+├── .claude/                         # Claude Code harness (primary today)
+│   ├── agents/                      # Agent definitions
+│   ├── skills/                      # Skill definitions
+│   └── commands/                    # Recipe entry points
 ├── memory/
-│   ├── engine/          # System knowledge (intents, flows, schemas)
-│   └── vault/           # User knowledge (mental models, practices)
-├── philosophy/          # Design principles and usage guides
-├── recipes/             # Executable recipes (skills)
-├── skills/              # Reusable skill definitions
-└── .phoenix-os/
-    └── stm/             # Runtime short-term memory
+│   ├── engine/                      # Phoenix Architecture system knowledge
+│   │   ├── intents/                 # Intent definitions & classification rules
+│   │   ├── flows/                   # Orchestration patterns
+│   │   └── schemas/                 # Data schemas
+│   └── vault/                       # User knowledge (external, user-specific)
+├── philosophy/                      # IDD, Phoenix, PCAM, Four Crafts
+├── .phoenix-os/
+│   └── stm/                        # Runtime short-term memory (ephemeral)
+└── docs/                            # Architecture & guides
 ```
+
+**Note**: The vault (`memory/vault/`) is user-specific data, not part of the engine. In production, it is mounted externally. The engine (`memory/engine/`) ships with Chronos.
 
 ---
 
@@ -453,6 +505,6 @@ Skill("phoenix-cognition-evaluate-understanding") → synthesis (orchestrator de
 
 ---
 
-**Version**: 3.3.0
-**Last Updated**: 2026-01-13
-**Changes**: Added Section 1a "Intent Execution Gate" - mandatory pre-execution check that verifies intent is in recipe bindings and status is "active" before execution. User requests do not override binding checks.
+**Version**: 4.0.0
+**Last Updated**: 2026-03-01
+**Changes**: Rebranded from Phoenix OS to Chronos. Added naming hierarchy (IDD → Methods → Phoenix Architecture → Products). Added PCAM model and Four Crafts (Prompt, Context, Intent, Spec Crafting) as philosophical foundations. Clarified memory separation (methods in repo, data external). Updated project structure to reflect monorepo.
