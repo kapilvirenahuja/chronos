@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chronos Roadmap Brief — 2026-03-04</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 40px 24px;
+    color: #1a1a1a;
+    line-height: 1.6;
+    background: #fafafa;
+  }
+  h1 {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    color: #111;
+  }
+  .subtitle {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 36px;
+  }
+  h2 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #111;
+    margin-top: 40px;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #e0e0e0;
+  }
+  h2 .section-num {
+    color: #888;
+    font-weight: 400;
+    margin-right: 8px;
+  }
+  p { margin: 12px 0; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  th {
+    text-align: left;
+    padding: 10px 12px;
+    background: #f0f0f0;
+    border-bottom: 2px solid #ccc;
+    font-weight: 600;
+    color: #333;
+  }
+  td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #e8e8e8;
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  .decision-box {
+    background: #fff;
+    border: 1px solid #d0d0d0;
+    border-left: 4px solid #2563eb;
+    padding: 16px 20px;
+    margin: 12px 0;
+    border-radius: 4px;
+  }
+  .decision-box strong {
+    display: block;
+    margin-bottom: 6px;
+    color: #1e40af;
+  }
+  .ask-box {
+    background: #fff;
+    border: 1px solid #d0d0d0;
+    border-left: 4px solid #dc2626;
+    padding: 16px 20px;
+    margin: 12px 0;
+    border-radius: 4px;
+  }
+  .ask-box strong {
+    display: block;
+    margin-bottom: 6px;
+    color: #b91c1c;
+  }
+  .assumption-box {
+    background: #fff;
+    border: 1px solid #d0d0d0;
+    border-left: 4px solid #f59e0b;
+    padding: 16px 20px;
+    margin: 12px 0;
+    border-radius: 4px;
+  }
+  .assumption-box strong {
+    display: block;
+    margin-bottom: 6px;
+    color: #b45309;
+  }
+  .exclusion-item {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    padding: 12px 16px;
+    margin: 8px 0;
+    border-radius: 4px;
+  }
+  .exclusion-item strong { color: #555; }
+  .tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-right: 4px;
+  }
+  .tag-near { background: #dcfce7; color: #166534; }
+  .tag-mid { background: #dbeafe; color: #1e40af; }
+  .tag-long { background: #f3e8ff; color: #6b21a8; }
+  .tag-p1 { background: #fee2e2; color: #991b1b; }
+  .tag-p2 { background: #fef3c7; color: #92400e; }
+  .tag-p3 { background: #e0e7ff; color: #3730a3; }
+  .tag-foundation { background: #111; color: #fff; }
+  .dep-graph {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    background: #fff;
+    border: 1px solid #d0d0d0;
+    padding: 20px;
+    border-radius: 4px;
+    line-height: 1.8;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .meta-bar {
+    display: flex;
+    gap: 24px;
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 8px;
+  }
+  .risk-flag {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+  .risk-high { background: #fee2e2; color: #991b1b; }
+  .risk-medium { background: #fef3c7; color: #92400e; }
+  .risk-low { background: #dcfce7; color: #166534; }
+  .footer {
+    margin-top: 48px;
+    padding-top: 16px;
+    border-top: 1px solid #ddd;
+    font-size: 12px;
+    color: #999;
+  }
+</style>
+</head>
+<body>
+
+<h1>Chronos Roadmap Brief</h1>
+<div class="meta-bar">
+  <span>Date: 2026-03-04</span>
+  <span>Vision: LOCKED v0.1.0</span>
+  <span>Epics: 12</span>
+  <span>Horizon: 12 months</span>
+  <span>Read time: ~20 min</span>
+</div>
+<div class="subtitle">Gate artifact for human review. Every element in this brief exists because a reviewer must act on it.</div>
+
+<!-- ============================================================ -->
+<h2><span class="section-num">1</span> THE BET</h2>
+
+<p>
+Chronos bets that strategic leaders -- CTOs, PMs, Founders -- will adopt a personal AI that captures their thinking from wherever it happens, synthesizes it into compounding knowledge, and retrieves it grounded in their own reasoning. The market has capture tools (Granola, Rewind), organization tools with AI bolted on (Notion, Obsidian), and consumer-grade AI notes (Mem) -- but nothing that combines intent detection, role-specific profiles, multi-channel capture, and a knowledge base that compounds over time. This is the whitespace. The first 3 months are a foundation investment: engine, memory architecture, capture loop, sessions, and Discord as the primary channel. If the foundation is right, the mid-horizon delivers the first intent that proves the full pipeline end-to-end (clarify), and the long horizon delivers the differentiators that make the product defensible (proactive synthesis, role profiles, channel expansion). The moat is the user's own knowledge -- every week of use makes switching harder and retrieval more valuable.
+</p>
+
+<!-- ============================================================ -->
+<h2><span class="section-num">2</span> THE STORY</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 120px;">Horizon</th>
+      <th>What Ships</th>
+      <th style="width: 180px;">What It Proves</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>
+        <span class="tag tag-near">NEAR</span><br>
+        0-3 months
+      </td>
+      <td>
+        <strong>E1: Engine Foundation + Capture Pipeline</strong> <span class="tag tag-p1">P1</span> <span class="tag tag-foundation">FOUNDATION</span><br>
+        Serverless engine on Vercel. System layer loading, signal normalization, capture intent, capture_log to Postgres. Platform prerequisite for everything else.<br><br>
+        <strong>E4: Two-Layer Memory Architecture</strong> <span class="tag tag-p1">P1</span> <span class="tag tag-foundation">FOUNDATION</span><br>
+        Layer 1 (source of truth via adapter) + Layer 2 (search index via Upstash Vector). Memory adapter with calibration, TICK framework. STM in Postgres, LTM via adapter.<br><br>
+        <strong>E3: Discord Channel Integration</strong> <span class="tag tag-p1">P1</span> <span class="tag tag-foundation">FOUNDATION</span><br>
+        Discord as primary MVP channel. Interactions API (HTTP POST), slash commands, topic-based sessions. No WebSocket, no separate worker.<br><br>
+        <strong>E8: Session Management + STM Persistence</strong> <span class="tag tag-p1">P1</span> <span class="tag tag-foundation">FOUNDATION</span><br>
+        Topic-based sessions in Postgres. STM initialized from LTM at session start. Token budget management. Required for any multi-turn intent.<br><br>
+        <strong>E2: Heartbeat Classification + LTM Promotion</strong> <span class="tag tag-p1">P1</span> <span class="tag tag-foundation">FOUNDATION</span><br>
+        Daily cron batch-processing unprocessed captures. Classification against taxonomy, quality filtering, LTM promotion. Closes the capture value loop.
+      </td>
+      <td>
+        The MVP value loop works: a user can capture thinking via Discord, the system stores it, heartbeat classifies and promotes it, and it becomes retrievable knowledge. This is the minimum viable product.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span class="tag tag-mid">MID</span><br>
+        3-6 months
+      </td>
+      <td>
+        <strong>E5: Clarify Intent + Full Orchestration Pipeline</strong> <span class="tag tag-p1">P1</span> <span class="tag tag-foundation">FOUNDATION</span><br>
+        First intent proving the full PCAM pipeline: DAG routing, agent execution, skill chains, signal-grounded questions, multi-turn state, synthesis output.<br><br>
+        <strong>E6: Confidence Scoring + Decision Audit Log</strong> <span class="tag tag-p1">P1</span><br>
+        Separate eval agent for confidence scoring. Decision audit log in Postgres -- every autonomous action logged with confidence, reasoning, citations.<br><br>
+        <strong>E9: Intent Breadth (Decide, Validate, Advise)</strong> <span class="tag tag-p2">P2</span><br>
+        Expand beyond capture and clarify to decide, validate, consult, advise, design. Proves intent architecture scales.<br><br>
+        <strong>E7: Web Layer + Autonomous Channel Selection</strong> <span class="tag tag-p2">P2</span><br>
+        Engine generates HTML pages for complex responses, sends URLs to Discord. Cognition decides channel autonomously.
+      </td>
+      <td>
+        The system reasons, not just captures. Clarify proves the orchestration pipeline works. Confidence scoring establishes the trust contract. Intent expansion proves the architecture scales.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span class="tag tag-long">LONG</span><br>
+        6-12 months
+      </td>
+      <td>
+        <strong>E10: CTO Role Profile + Role-Specific Manifesting</strong> <span class="tag tag-p2">P2</span><br>
+        Formalized CTO profile with role-specific intent handlers, domain grounding, manifestation templates. Abstracted system for adding PM and Founder profiles via markdown.<br><br>
+        <strong>E11: Proactive Synthesis (Advanced Heartbeat)</strong> <span class="tag tag-p2">P2</span><br>
+        Heartbeat evolves from classification to synthesis: pattern detection, gap identification, contradiction surfacing, cross-signal connections. The differentiator.<br><br>
+        <strong>E12: Multi-Channel Expansion</strong> <span class="tag tag-p3">P3</span><br>
+        Claude Code as client channel calling engine API. Channel-agnostic pattern established for future channels (Telegram, WhatsApp, email, voice).
+      </td>
+      <td>
+        The product becomes defensible. Role profiles make outputs meaningfully different from generic AI. Proactive synthesis makes the knowledge base actively valuable, not just retrievable. Multi-channel closes the capture-from-anywhere promise.
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Dependency structure (sequencing constraint):</strong></p>
+<div class="dep-graph">E1 (Engine) ──┬── E3 (Discord)
+              ├── E4 (Memory) ──┬── E2 (Heartbeat) ──┐
+              │                 ├── E8 (Sessions) ────┼── E5 (Clarify) ──┬── E7 (Web)
+              │                 │                     │                  ├── E9 (Intents) ── E10 (Roles)
+              │                 │                     │                  └── E12 (Channels)
+              │                 └── E11 (Synthesis) ──┘
+              └── E6 (Confidence) ◄── E2</div>
+
+<p style="font-size: 13px; color: #666; margin-top: 8px;">
+E1 is the critical path root. E4 (memory) is the highest-risk near-term item -- its adapter interface must stabilize before E2, E8, and downstream epics can start. E5 (clarify) is the mid-horizon critical path -- it depends on three near-horizon epics and validates the entire orchestration architecture.
+</p>
+
+<!-- ============================================================ -->
+<h2><span class="section-num">3</span> KEY DECISIONS</h2>
+
+<p>The following decisions require explicit reviewer agreement. Each changes sequencing, priority, or scope if reversed.</p>
+
+<div class="decision-box">
+  <strong>D1: Foundation-heavy near horizon (5 of 5 near-term epics are foundation investments)</strong>
+  <p>
+    All five near-horizon epics (E1, E2, E3, E4, E8) are tagged as foundation investments. This means the first 3 months deliver infrastructure, not user-facing differentiation. The MVP value loop (capture via Discord, heartbeat classifies, knowledge becomes retrievable) is the minimum viable proof point, but it does not yet include the intent-driven reasoning that differentiates Chronos from simpler capture tools.
+  </p>
+  <p>
+    <strong>Trade-off:</strong> Slower time to differentiated value. Faster time to stable architecture that mid-horizon builds on without rework.
+  </p>
+  <p>
+    <strong>If reversed:</strong> Pulling E5 (clarify pipeline) or E6 (confidence scoring) into near horizon increases near-term scope by ~2 XL-effort items and introduces risk of building on an unstable memory layer. E4's adapter interface must stabilize first.
+  </p>
+</div>
+
+<div class="decision-box">
+  <strong>D2: E4 (Two-Layer Memory) as the highest-risk near-term investment</strong>
+  <p>
+    E4 carries <span class="risk-flag risk-high">HIGH RISK</span>. Two blockers affect downstream sequencing: (1) Layer 1 source of truth must be pinned before the adapter interface is defined -- this cascades to E2 and E8. (2) Upstash Vector free tier rate limits must be validated before committing to the search index architecture.
+  </p>
+  <p>
+    <strong>Trade-off:</strong> If Layer 1 source or search index choice changes mid-build, E2 (heartbeat), E8 (sessions), and everything downstream shifts.
+  </p>
+  <p>
+    <strong>If reversed:</strong> Deferring E4 would force E2 and E8 to build against a mocked memory interface, adding rework when the real adapter arrives. Alternatively, simplifying to a single-layer memory reduces near-term risk but removes the quality-gating differentiator from the architecture.
+  </p>
+</div>
+
+<div class="decision-box">
+  <strong>D3: Discord as sole MVP input channel (not Claude Code, not web)</strong>
+  <p>
+    Discord is the primary user interface for MVP. Claude Code connects as a client channel but is scoped for code/file work locally and engine API calls for context operations. Web is prototype-only in near horizon. The bet is that Discord slash commands provide sufficient capture UX for early validation.
+  </p>
+  <p>
+    <strong>Trade-off:</strong> Users who prefer CLI-first interaction wait until E12 (long horizon) for a fully supported Claude Code channel. Discord's 3-second interaction acknowledgment window requires a deferred response pattern from day one in E1.
+  </p>
+  <p>
+    <strong>If reversed:</strong> Adding Claude Code as a co-primary channel in near horizon splits integration effort and complicates the "one engine, multiple channels" validation. Discord is simpler to validate because it has a constrained interaction model (slash commands).
+  </p>
+</div>
+
+<div class="decision-box">
+  <strong>D4: E9 (Intent Breadth) scoped as XL but deferred to P2 mid-horizon</strong>
+  <p>
+    E9 bundles five distinct intent implementations (decide, validate, consult, advise, design) into one XL epic at P2 priority. This is the largest scope item on the roadmap after the near-horizon foundation. The feasibility flag notes that five intents hidden under XL needs decomposition, and chained Opus synthesis calls risk hitting the 60-second timeout.
+  </p>
+  <p>
+    <strong>Trade-off:</strong> Keeping E9 as one epic simplifies roadmap tracking but obscures the actual work. Decomposing it into 3-5 smaller epics would reveal true sequencing constraints between intents.
+  </p>
+  <p>
+    <strong>If reversed:</strong> Promoting E9 to P1 mid-horizon or pulling any individual intent forward changes the mid-horizon scope significantly and may compete with E5 (clarify) for capacity.
+  </p>
+</div>
+
+<!-- ============================================================ -->
+<h2><span class="section-num">4</span> WHAT WE ARE NOT DOING</h2>
+
+<div class="exclusion-item">
+  <strong>Multi-user / team features.</strong>
+  MVP is owner-only. No trust tiers, no guest access, no shared memory, no collaboration. The architecture supports it; the roadmap does not include it within 12 months.
+</div>
+
+<div class="exclusion-item">
+  <strong>Mobile-native clients.</strong>
+  Discord on mobile is the mobile story. No native iOS/Android app. No voice capture beyond what Discord provides.
+</div>
+
+<div class="exclusion-item">
+  <strong>Self-hosted / on-premise deployment.</strong>
+  Vercel Hobby plan is the deployment target. No Docker images, no self-hosted option, no enterprise deployment model. Privacy concerns are addressed by data ownership terms and encryption, not by deployment model.
+</div>
+
+<div class="exclusion-item">
+  <strong>PM and Founder persona profiles in the 12-month horizon.</strong>
+  E10 abstracts the role-profile system so future personas can be added via markdown. But only the CTO profile is built. PM and Founder profiles are beyond this roadmap.
+</div>
+
+<div class="exclusion-item">
+  <strong>Import / migration tooling.</strong>
+  No "import your Notion" or "import your Obsidian vault" wizard. Cold start is addressed by guided onboarding and fast capture UX, not by bulk import. This is a deliberate scope cut despite the cold-start risk.
+</div>
+
+<div class="exclusion-item">
+  <strong>LLM provider portability.</strong>
+  The roadmap is Claude-native (Haiku for scoring, Sonnet for routing, Opus for synthesis). No multi-provider abstraction layer. Anthropic pricing and capability trajectory is a monitored risk, not a near-term engineering investment.
+</div>
+
+<!-- ============================================================ -->
+<h2><span class="section-num">5</span> ASKS</h2>
+
+<div class="ask-box">
+  <strong>ASK 1: Approve the foundation-heavy near horizon.</strong>
+  <p>
+    The first 3 months are all infrastructure. The earliest user-facing differentiation (intent-driven clarify) is mid-horizon. Confirm this sequencing is acceptable given the product timeline and any external commitments (demos, investor updates, user pilots).
+  </p>
+</div>
+
+<div class="ask-box">
+  <strong>ASK 2: Decide on E4 Layer 1 source of truth before E4 starts.</strong>
+  <p>
+    The memory adapter interface cannot be designed until the Layer 1 storage is pinned. Candidates need to be evaluated (e.g., Obsidian vault via git, Postgres-native, filesystem). This decision cascades to E2, E8, and all downstream epics. It is the single highest-leverage decision on the roadmap and must be resolved before engineering begins on E4.
+  </p>
+</div>
+
+<div class="ask-box">
+  <strong>ASK 3: Confirm E9 decomposition approach.</strong>
+  <p>
+    E9 bundles 5 intents into one XL epic. The feasibility assessment flags this as needing decomposition. Options: (a) decompose now into 3-5 smaller epics with independent sequencing, (b) keep as one epic and decompose at mid-horizon planning, (c) pick 2-3 priority intents and defer the rest. This affects mid-horizon capacity planning.
+  </p>
+</div>
+
+<div class="ask-box">
+  <strong>ASK 4: Validate Upstash Vector free-tier viability for E4.</strong>
+  <p>
+    E4 depends on Upstash Vector for the search index layer. Free-tier rate limits have not been validated against expected query volume. If rate limits are insufficient, the alternative is self-managed vector search, which changes E4 effort and potentially its timeline. This validation should happen before E4 begins.
+  </p>
+</div>
+
+<!-- ============================================================ -->
+<h2><span class="section-num">6</span> ASSUMPTIONS</h2>
+
+<div class="assumption-box">
+  <strong>A1: Solo builder capacity is sufficient for the near-horizon scope.</strong>
+  <p>
+    The near horizon contains 2 XL epics (E1, E4), 1 M epic (E3), and 2 L epics (E2, E8) -- all P1. This is scoped for a single builder over 3 months. If capacity is lower than expected, E2 (heartbeat) is the most likely deferral candidate because the capture loop works without LTM promotion (it just does not compound yet).
+  </p>
+</div>
+
+<div class="assumption-box">
+  <strong>A2: Vercel Hobby plan constraints are acceptable for MVP.</strong>
+  <p>
+    Vercel Hobby plan limits: 1 cron/day (accepted for heartbeat in E2), 60-second function timeout (risk for E5 and E9 multi-agent orchestration), and hobby-tier bandwidth. The roadmap assumes these limits hold for the full 12 months. If usage outgrows Hobby, upgrading to Pro changes the cost model but not the architecture.
+  </p>
+</div>
+
+<div class="assumption-box">
+  <strong>A3: Discord's 3-second acknowledgment window is solvable with a deferred response pattern.</strong>
+  <p>
+    Discord Interactions API requires an initial response within 3 seconds. All engine processing beyond trivial lookups exceeds this. The assumption is that a deferred response pattern (acknowledge immediately, send follow-up when processing completes) works reliably enough for MVP. This pattern must be designed and validated within E1 scope, not deferred.
+  </p>
+</div>
+
+<div class="assumption-box">
+  <strong>A4: Intent detection accuracy is achievable with current LLMs at useful cost.</strong>
+  <p>
+    The vision targets 85%+ intent detection accuracy across five core intents. The roadmap assumes current Claude models can achieve this without fine-tuning. If accuracy is materially lower, E5 (clarify) and E9 (intent breadth) timelines shift right as more iteration is needed on the detection pipeline.
+  </p>
+</div>
+
+<div class="assumption-box">
+  <strong>A5: The CTO persona is sufficient for early validation.</strong>
+  <p>
+    Starting with CTO-only constrains the addressable market but focuses the intent model and knowledge taxonomy. The assumption is that validating with one persona proves the architecture generalizes. If it does not, the role-profile abstraction in E10 carries more risk than estimated.
+  </p>
+</div>
+
+<!-- ============================================================ -->
+
+<div class="footer">
+  <p>
+    Generated: 2026-03-04 | Source: .meridian/project/product/chronos/vision.md (LOCKED v0.1.0) | Epics: .meridian/project/product/chronos/roadmap-epics.md
+  </p>
+  <p>
+    This brief is a gate artifact. It requires explicit human review and approval before roadmap execution begins.
+  </p>
+</div>
+
+</body>
+</html>
