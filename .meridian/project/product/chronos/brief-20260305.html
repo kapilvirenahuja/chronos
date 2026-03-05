@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Roadmap Brief: Chronos</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
+      color: #1a1a1a;
+      background: #fff;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 48px 32px 80px;
+    }
+    header {
+      border-bottom: 2px solid #1a1a1a;
+      padding-bottom: 20px;
+      margin-bottom: 40px;
+    }
+    header h1 {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    header .meta {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #555;
+    }
+    header .meta span { margin-right: 20px; }
+    section {
+      margin-bottom: 48px;
+    }
+    h2 {
+      font-size: 18px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #1a1a1a;
+      border-left: 4px solid #1a1a1a;
+      padding-left: 12px;
+      margin-bottom: 20px;
+    }
+    p { margin-bottom: 14px; }
+    p:last-child { margin-bottom: 0; }
+
+    /* Decisions summary table */
+    .decisions-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 36px;
+      font-size: 14px;
+    }
+    .decisions-table th {
+      background: #1a1a1a;
+      color: #fff;
+      padding: 10px 12px;
+      text-align: left;
+      font-weight: 600;
+    }
+    .decisions-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid #e5e5e5;
+      vertical-align: top;
+    }
+    .decisions-table tr:last-child td { border-bottom: none; }
+    .decisions-table tr:nth-child(even) td { background: #fafafa; }
+
+    /* Horizon badges */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .badge-near { background: #d4edda; color: #155724; }
+    .badge-mid  { background: #fff3cd; color: #856404; }
+    .badge-long { background: #f8d7da; color: #721c24; }
+    .badge-p1   { background: #cce5ff; color: #004085; }
+    .badge-p2   { background: #e2e3e5; color: #383d41; }
+    .badge-p3   { background: #f8f9fa; color: #6c757d; }
+
+    /* Per-epic subsections */
+    .epic-card {
+      border: 1px solid #e5e5e5;
+      border-radius: 6px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .epic-card:last-child { margin-bottom: 0; }
+    .epic-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      gap: 16px;
+    }
+    .epic-header h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1a1a1a;
+    }
+    .epic-badges { display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
+    .epic-field { margin-bottom: 14px; }
+    .epic-field:last-child { margin-bottom: 0; }
+    .epic-field-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #777;
+      margin-bottom: 4px;
+    }
+    .epic-field-value { font-size: 14px; color: #1a1a1a; }
+    .epic-field-value ul { padding-left: 18px; }
+    .epic-field-value li { margin-bottom: 4px; }
+    .foundation-flag {
+      display: inline-block;
+      background: #e8f4ff;
+      color: #0056b3;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 3px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+
+    /* What We're Not Doing */
+    .not-doing-list { list-style: none; padding: 0; }
+    .not-doing-list li {
+      padding: 10px 0;
+      border-bottom: 1px solid #e5e5e5;
+      font-size: 14px;
+    }
+    .not-doing-list li:last-child { border-bottom: none; }
+    .not-doing-list strong { color: #1a1a1a; }
+
+    /* The Asks */
+    .asks-list { list-style: none; padding: 0; counter-reset: asks; }
+    .asks-list li {
+      counter-increment: asks;
+      padding: 14px 0 14px 44px;
+      border-bottom: 1px solid #e5e5e5;
+      position: relative;
+      font-size: 14px;
+    }
+    .asks-list li:last-child { border-bottom: none; }
+    .asks-list li::before {
+      content: counter(asks);
+      position: absolute;
+      left: 0;
+      top: 14px;
+      width: 28px;
+      height: 28px;
+      background: #1a1a1a;
+      color: #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 28px;
+      text-align: center;
+    }
+
+    /* Key Assumptions */
+    .assumptions-list { list-style: none; padding: 0; }
+    .assumptions-list li {
+      padding: 10px 0 10px 20px;
+      border-bottom: 1px solid #e5e5e5;
+      font-size: 14px;
+      position: relative;
+    }
+    .assumptions-list li:last-child { border-bottom: none; }
+    .assumptions-list li::before {
+      content: "→";
+      position: absolute;
+      left: 0;
+      color: #999;
+    }
+
+    footer {
+      margin-top: 60px;
+      padding-top: 20px;
+      border-top: 1px solid #e5e5e5;
+      font-size: 12px;
+      color: #999;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Roadmap Brief: Chronos</h1>
+  <div class="meta">
+    <span><strong>Status:</strong> DRAFT</span>
+    <span><strong>Created:</strong> 2026-03-05</span>
+    <span><strong>Epics:</strong> 5</span>
+    <span><strong>Vision:</strong> .meridian/project/product/chronos/vision.md</span>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="bet">
+  <h2>The Bet</h2>
+  <p>Strategic leaders — CTOs, PMs, Founders — accumulate valuable thinking across dozens of channels, yet no system captures, connects, and compounds that thinking over time. The bet is that an intent-driven personal AI that detects what a leader wants (capture, retrieve, synthesize, decide, brief), routes to specialized pipelines, and builds a curated long-term knowledge base will become irreplaceable: the longer a user engages, the wider the moat grows, because no competitor can replicate that user's six months of captured strategic reasoning.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="story">
+  <h2>The Story</h2>
+  <p>We start by making Chronos a system, not a chatbot. E1 (Intent Engine) and E2 (Traceability Layer) ship together in the near horizon and establish the two non-negotiable foundations: the system must know what you want, and every answer must be traceable to your own captured knowledge. Without E1, every interaction is a blank slate. Without E2, every answer is untrustworthy. These two epics together define what makes Chronos different from any generic AI wrapper — and they are the prerequisite for everything that follows.</p>
+  <p>In the mid horizon, we split into two parallel workstreams. E3 (Compounding Knowledge Base) transforms Chronos from a session assistant into a personal strategic intelligence system: short-term capture feeds into a curated long-term memory, and the heartbeat engine surfaces connections the user would never find manually. E4 (Multi-Channel Capture) opens the capture pipeline beyond CLI — Discord, Telegram, WhatsApp — meeting leaders where they actually think. E3 and E4 are independent of each other (E4 depends only on E1), enabling parallel delivery if team capacity allows; however, E4 signals must be E3-compatible at normalization so the two workstreams connect cleanly when both ship.</p>
+  <p>In the long horizon, E5 (Role-Specific Intelligence) applies persona framing to the now-rich knowledge base. CTO, PM, and Founder users get tailored synthesis, retrieval framing, and briefing formats. E5 requires both E1 (routing extension points) and E3 (a populated LTM to draw on); shipping E5 without E3 would produce role-framed generic outputs — differentiated in form but not in substance. The long-horizon placement is deliberate: persona intelligence is only defensible when grounded in months of the user's own captured thinking.</p>
+  <p>The critical sequencing constraint across all five epics: E1 is the keystone. Every epic either directly depends on it or depends on something that does. E1 must be designed from day one with extension points for E2's citation layer, E4's channel normalization, and E5's persona handler interface — or downstream epics will require E1 refactoring. The foundation investment in E1 and E2 is what makes the mid and long horizon epics compounding rather than merely additive.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="decisions">
+  <h2>Decisions</h2>
+
+  <!-- Summary table — one <tr> per epic -->
+  <table class="decisions-table">
+    <thead>
+      <tr>
+        <th>Epic</th>
+        <th>Horizon</th>
+        <th>Priority</th>
+        <th>Effort</th>
+        <th>Depends On</th>
+        <th>One-Line Reason</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>E1: Intent Engine</strong></td>
+        <td><span class="badge badge-near">Near</span></td>
+        <td><span class="badge badge-p1">P1</span></td>
+        <td>L</td>
+        <td>None</td>
+        <td>Core intent detection and routing — the foundational layer every other epic depends on.</td>
+      </tr>
+      <tr>
+        <td><strong>E2: Traceability Layer</strong></td>
+        <td><span class="badge badge-near">Near</span></td>
+        <td><span class="badge badge-p1">P1</span></td>
+        <td>M</td>
+        <td>E1: Intent Engine</td>
+        <td>Citation and confidence scoring infrastructure — establishes the trust required for executive reliance.</td>
+      </tr>
+      <tr>
+        <td><strong>E3: Compounding Knowledge Base</strong></td>
+        <td><span class="badge badge-mid">Mid</span></td>
+        <td><span class="badge badge-p1">P1</span></td>
+        <td>XL</td>
+        <td>E1: Intent Engine, E2: Traceability Layer</td>
+        <td>Two-layer memory with quality gating and heartbeat synthesis — transforms a session assistant into a compounding intelligence system.</td>
+      </tr>
+      <tr>
+        <td><strong>E4: Multi-Channel Capture</strong></td>
+        <td><span class="badge badge-mid">Mid</span></td>
+        <td><span class="badge badge-p2">P2</span></td>
+        <td>L</td>
+        <td>E1: Intent Engine</td>
+        <td>Chat platform integrations (Discord, Telegram, WhatsApp) — captures strategic thinking from every channel where leaders actually operate.</td>
+      </tr>
+      <tr>
+        <td><strong>E5: Role-Specific Intelligence</strong></td>
+        <td><span class="badge badge-long">Long</span></td>
+        <td><span class="badge badge-p2">P2</span></td>
+        <td>L</td>
+        <td>E1: Intent Engine, E3: Compounding Knowledge Base</td>
+        <td>Persona layer for CTO, PM, and Founder roles — differentiates Chronos from generic AI with role-specific synthesis grounded in a rich knowledge base.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Per-epic detail cards — one .epic-card div per epic -->
+
+  <div class="epic-card">
+    <div class="epic-header">
+      <h3>E1: Intent Engine <span class="foundation-flag">Foundation</span></h3>
+      <div class="epic-badges">
+        <span class="badge badge-near">Near</span>
+        <span class="badge badge-p1">P1</span>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Intent</div>
+      <div class="epic-field-value">
+        <p>Today, knowledge workers who interact with AI systems must formulate explicit, precise queries to get useful results. There is no system that understands what a strategic leader is trying to accomplish — whether they want to capture a new decision, retrieve past reasoning, synthesize a pattern from accumulated signals, prepare for a decision, or produce a briefing artifact. Without intent classification, every interaction is a blank slate: the user must do the cognitive work of routing themselves, and the system has no persistent understanding of what type of help is being sought. This creates friction that disqualifies the tool for high-stakes, time-pressured contexts where strategic leaders actually operate.</p>
+        <p>After this epic ships, a user can express their need in natural language — 'what did we decide about the database architecture?' or 'prepare a board briefing on our AI strategy' — and Chronos will correctly detect the intent category, route to the appropriate processing pipeline, and return a useful output without requiring the user to specify a command, choose a mode, or formulate a query. The system absorbs the routing complexity, and the user experiences a single fluid interface that always understands what they want. Interaction-to-value time drops below 15 seconds for retrieval and capture intents, and 80% of users report the system understood their need.</p>
+        <p>Intent detection is the product's core architectural bet. Every other capability — compounding memory, multi-channel capture, persona-specific intelligence, traceability — depends on the system knowing what the user wants before it can route to the right pipeline. Without this layer, Chronos is indistinguishable from a generic AI assistant: powerful in isolation but unable to compound value across interactions. Building a production-grade intent engine in the near horizon is what makes every subsequent epic meaningful rather than additive features on top of a generic substrate. This epic makes Chronos a system, not a chatbot.</p>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Constraints</div>
+      <div class="epic-field-value">
+        <ul>
+          <li><strong>In scope:</strong> Intent classification across five core intents: capture, retrieve, synthesize, decide, brief. Confidence scoring on each classification. Routing dispatch to processing pipeline stubs (pipelines are built in downstream epics). A feedback mechanism for low-confidence or misclassified intents. CLI as the primary interaction channel for this epic. Structured output contracts per intent type.</li>
+          <li><strong>Out of scope:</strong> The actual processing pipelines beyond routing stubs (those are built in E2, E3, E4, E5). Multi-channel input parsing beyond CLI (that is E4). Persona-specific intent variants (that is E5). Voice input. Any UI beyond CLI output.</li>
+          <li><strong>Must not break:</strong> None at this stage — foundational epic.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Success Scenarios</div>
+      <div class="epic-field-value">
+        <ul>
+          <li>Given a CTO types 'why did we choose Postgres over MySQL last year?' in the CLI, when Chronos processes the input, then the intent is classified as 'retrieve' with confidence above 0.85 and the system dispatches to the retrieval pipeline stub returning a structured response within 15 seconds.</li>
+          <li>Given a user inputs 'I just decided to sunset the mobile app by Q3', when Chronos processes the input, then the intent is classified as 'capture' and the system acknowledges capture completion with a confirmation containing the extracted decision context.</li>
+          <li>Given a user submits an input that is genuinely ambiguous between 'synthesize' and 'retrieve', when Chronos processes the input with confidence below threshold, then the system surfaces a disambiguation prompt rather than routing silently to the wrong pipeline.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Failure Conditions</div>
+      <div class="epic-field-value">
+        <ul>
+          <li>Intent detection accuracy falls below 80% in end-to-end testing across all five intent categories using a held-out test set of 50 diverse inputs from the three target personas.</li>
+          <li>A user submits a capture, retrieve, or synthesize intent and waits more than 15 seconds before receiving any output or acknowledgment — even a loading indicator counts as output.</li>
+          <li>The system silently routes to the wrong pipeline without surfacing a confidence warning, producing a response that addresses a different intent than what the user expressed.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Why Now</div>
+      <div class="epic-field-value">
+        <p>E1 is the near-horizon foundation that has no dependencies and unlocks everything else. The five-intent product model (capture/retrieve/synthesize/decide/brief) does not yet exist in the architecture — the current system handles only recipe orchestration intents. Delivering E1 first is a hard sequencing requirement: E2 has no output contracts to attach citations to, E3 has no routing layer to dispatch retrieval through, E4 has no processing destination for channel inputs, and E5 has no dispatch layer for persona handlers. Feasibility assessment confirms no blockers for E1; the primary risk is intent classification accuracy, which is mitigated by building a labeled test set from day one.</p>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Dependencies &amp; What It Unlocks</div>
+      <div class="epic-field-value">
+        <ul>
+          <li><strong>Requires:</strong> None — E1 is the foundational epic with no upstream dependencies.</li>
+          <li><strong>Unlocks:</strong> E2 (Traceability Layer), E3 (Compounding Knowledge Base), E4 (Multi-Channel Capture), E5 (Role-Specific Intelligence) — all four remaining epics depend on E1's intent routing layer.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="epic-card">
+    <div class="epic-header">
+      <h3>E2: Traceability Layer <span class="foundation-flag">Foundation</span></h3>
+      <div class="epic-badges">
+        <span class="badge badge-near">Near</span>
+        <span class="badge badge-p1">P1</span>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Intent</div>
+      <div class="epic-field-value">
+        <p>Executives making high-stakes decisions face a fundamental trust barrier with AI systems: they cannot tell whether a response came from their own captured knowledge or from the model's training data. When a system surfaces a recommendation without a source, the user must either blindly trust it or spend time verifying it themselves — defeating the productivity value. Worse, hallucinated content presented without qualification can lead to decisions grounded in fabricated reasoning. Without a traceability layer, Chronos cannot differentiate itself from any generic LLM wrapper in the most important dimension for its target users: trustworthiness for consequential decisions.</p>
+        <p>After this epic ships, every output Chronos produces will include source citations linking to the specific captured signals it drew on, with a confidence score reflecting how strongly the output is grounded in the user's own knowledge. When training knowledge is used, it will be explicitly labeled as such so users always know what is retrieved versus what is inferred. A user receiving a synthesis on their AI investment strategy will see exactly which captures from which dates were used as evidence. Over time, this transparency creates a trust flywheel: users who can verify sources become willing to rely on the system for progressively higher-stakes decisions.</p>
+        <p>Traceability is designated as a continuous, non-negotiable goal in the product vision across the full 0–12 month horizon. It is not a nice-to-have — it is the mechanism by which Chronos earns the right to be used for consequential decisions. Shipping it in the near horizon alongside the intent engine ensures that from the first retrieval or synthesis, users experience a grounded, auditable system rather than a black box. This is what separates Chronos from Rewind AI (which records without reasoning) and from generic AI assistants (which generate without tracing). Traceability is also required for the compounding knowledge base in E3 to be trusted: users will not rely on synthesis outputs if they cannot see the sources.</p>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Constraints</div>
+      <div class="epic-field-value">
+        <ul>
+          <li><strong>In scope:</strong> Source citation generation for retrieval and synthesis outputs — each output includes a list of source signal paths with capture dates. Confidence scoring on each output reflecting the proportion of content grounded in user captures versus training knowledge. Explicit labeling of training-knowledge-sourced content in all outputs. A citation format that is human-readable in CLI output and parseable for downstream rendering. Zero-hallucination guarantee for grounded outputs — any content not traceable to a capture must be labeled.</li>
+          <li><strong>Out of scope:</strong> UI for browsing citations (beyond CLI display). Audit log UI or dashboard for reviewing historical output provenance. Citation export or reporting features. Confidence score calibration tooling beyond initial implementation. Integration with external fact-checking systems.</li>
+          <li><strong>Must not break:</strong> E1 intent routing — traceability metadata must be added to output contracts without altering the routing behavior or increasing interaction-to-value time beyond the 15-second threshold.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Success Scenarios</div>
+      <div class="epic-field-value">
+        <ul>
+          <li>Given a user asks Chronos to retrieve reasoning behind a past architecture decision and the vault contains relevant captures, when Chronos returns the response, then every factual claim in the response includes a source citation referencing a specific captured signal with its file path and capture date.</li>
+          <li>Given a user asks a question for which Chronos has no relevant captured signals and must rely on training knowledge, when Chronos returns the response, then the response includes an explicit label — visible in CLI output — indicating that the content is training-knowledge-sourced and not grounded in the user's captures.</li>
+          <li>Given a synthesis output is produced from a mix of captured signals and training knowledge, when the user reads the output, then each section or claim is attributable to either a specific capture or a labeled training-knowledge inference — no unmarked content exists in the output.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Failure Conditions</div>
+      <div class="epic-field-value">
+        <ul>
+          <li>A retrieval or synthesis output is produced that contains factual claims traceable to user captures but includes no source citations — even a single uncited grounded claim is a failure.</li>
+          <li>Training-knowledge-sourced content appears in any output without explicit labeling, indistinguishable from user-captured content.</li>
+          <li>Adding traceability metadata to outputs causes interaction-to-value time to exceed the 15-second threshold established in E1 for retrieval and capture intents.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Why Now</div>
+      <div class="epic-field-value">
+        <p>E2 ships in the near horizon immediately after E1 because it is a hard prerequisite for E3 — shipping the compounding knowledge base (E3) without a citation layer would produce untraced synthesis outputs that would require a costly retroactive retrofit. The feasibility assessment flags two high-severity risks that affect sequencing: the zero-hallucination guarantee requires a structured RAG approach (not freeform generation), and confidence scoring requires provenance tracking per claim during generation. Both decisions must be resolved in E2 before E3's synthesis engine is built. Vault signal files also need stable citation keys in frontmatter before E2 implementation begins — a prerequisite step within the E2 workstream.</p>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Dependencies &amp; What It Unlocks</div>
+      <div class="epic-field-value">
+        <ul>
+          <li><strong>Requires:</strong> E1 (Intent Engine) — E2 attaches citation metadata to the output contracts defined by E1's intent routing; without E1's pipeline stubs and output contract definitions, there is no structure to attach citations to.</li>
+          <li><strong>Unlocks:</strong> E3 (Compounding Knowledge Base) — E3's synthesis engine produces outputs that must carry citations; E2 must ship before E3 to avoid untraced synthesis outputs that require retroactive citation retrofit.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="epic-card">
+    <div class="epic-header">
+      <h3>E3: Compounding Knowledge Base</h3>
+      <div class="epic-badges">
+        <span class="badge badge-mid">Mid</span>
+        <span class="badge badge-p1">P1</span>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Intent</div>
+      <div class="epic-field-value">
+        <p>The core failure mode of existing PKM tools is accumulation without compounding. Users add notes, decisions, and links — but the system never synthesizes patterns across time, never surfaces connections between a decision made six months ago and a question being asked today, and never proactively tells the user what they should revisit. Knowledge decays rather than compounds because the system treats every piece of content as equivalent and static. For strategic leaders who accumulate significant thinking over months and years, this means the most valuable asset — their past reasoning — becomes inaccessible noise rather than a leverageable resource.</p>
+        <p>After this epic ships, Chronos maintains two distinct memory layers: a short-term layer that captures everything immediately with minimal latency, and a long-term layer that promotes only curated, high-signal content through quality gating. The proactive synthesis engine (heartbeat) runs periodically and surfaces novel connections, contradictions, and patterns across the user's knowledge base — delivering at least two valuable insights per week without the user having to ask. A user who captured a technology bet in month one will find it surfaced as relevant context when they make a related decision in month six. Retrieval queries return results spanning the full depth of captured knowledge, with 70%+ referencing signals older than 30 days.</p>
+        <p>The compounding knowledge base is what makes Chronos defensible. Any competitor can add intent detection; no competitor can replicate six months of a specific user's captured strategic thinking. The two-layer memory with quality gating creates a flywheel: the more a user captures, the more valuable synthesis becomes; the more valuable synthesis becomes, the more the user captures. This epic is the engine of that flywheel. It also unlocks the role-specific intelligence in E5 — persona-tailored outputs require a rich knowledge base to draw on. Without E3, Chronos is a smart session assistant; with E3, it becomes a compounding strategic intelligence system.</p>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Constraints</div>
+      <div class="epic-field-value">
+        <ul>
+          <li><strong>In scope:</strong> Short-term memory layer: immediate capture with full fidelity, session-scoped or time-bounded storage, no quality gating at ingest. Long-term memory layer: promotion pipeline from STM to LTM based on quality signals (recurrence, explicit user promotion, synthesis reference count). Automatic linking between related signals using semantic similarity. Quality gating rules: what constitutes a promotable signal. Heartbeat synthesis engine: scheduled (or on-demand) scans of LTM to surface connections, contradictions, and patterns. Heartbeat output format: structured insight cards with source citations (via E2 traceability layer). Knowledge base health metrics: curation ratio, depth of knowledge (signals older than 30 days), synthesis coverage.</li>
+          <li><strong>Out of scope:</strong> Multi-channel ingestion pipelines (that is E4). Persona-specific synthesis framing (that is E5). User-facing UI for browsing the knowledge graph. Bulk import tools for migrating from other PKM systems (deferred to onboarding phase). External knowledge integration (web content, documents not captured through Chronos channels). Knowledge base sharing or collaboration features.</li>
+          <li><strong>Must not break:</strong> E1 intent routing — retrieval intents must continue to dispatch correctly and must now route to the LTM layer for multi-session knowledge access. E2 traceability — all LTM-sourced content in synthesis outputs must continue to carry source citations and confidence scores.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Success Scenarios</div>
+      <div class="epic-field-value">
+        <ul>
+          <li>Given a user has been capturing signals for 35 days and submits a retrieval query, when Chronos returns the results, then at least 70% of the cited source signals have capture dates more than 30 days prior, demonstrating the long-term value of the compounding base.</li>
+          <li>Given a user has 50+ signals in LTM spanning multiple topics, when the heartbeat synthesis engine runs, then it surfaces at least 2 insight cards per week that the user rates as novel connections not previously visible to them, with each insight card citing at least 2 distinct source signals.</li>
+          <li>Given a user captures a new decision signal, when quality gating evaluates it, then signals that recur across 3+ sessions or are explicitly promoted by the user within 7 days are present in LTM; signals that are one-off mentions without reinforcement are not promoted within the same window.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Failure Conditions</div>
+      <div class="epic-field-value">
+        <ul>
+          <li>After 60 days of active use, 70% or more of retrieval query results reference only signals captured in the last 7 days — demonstrating that the long-term layer is not being populated or surfaced.</li>
+          <li>The heartbeat engine runs for a full calendar month without surfacing a single insight that the user rates as novel — indicating the synthesis is producing generic summaries rather than genuine connections.</li>
+          <li>The quality gating mechanism promotes every captured signal to LTM without discrimination, causing the long-term layer to become equivalent to the short-term layer and eliminating the curation benefit.</li>
+          <li>LTM retrieval latency exceeds the 15-second threshold established in E1, indicating the knowledge base architecture does not scale to the expected signal volume.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Why Now</div>
+      <div class="epic-field-value">
+        <p>E3 is placed in the mid horizon because it carries the highest architectural risk of all five epics (flagged high-risk in feasibility) and depends on E1 and E2 being stable first. Two blockers must be resolved before E3 implementation begins: (1) the vector store infrastructure decision — heartbeat synthesis almost certainly requires semantic similarity beyond keyword matching, and this architectural choice affects storage, deployment, and cost; (2) the product-level memory store path — E3 must use a separate persistence layer from the recipe STM workspace, and that storage architecture must be defined upfront. E3 is XL-effort and sits on the critical path to E5, making sequencing discipline essential to mid-horizon delivery.</p>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Dependencies &amp; What It Unlocks</div>
+      <div class="epic-field-value">
+        <ul>
+          <li><strong>Requires:</strong> E1 (Intent Engine) and E2 (Traceability Layer) — E3 retrieval intents dispatch through E1's routing layer, and all E3 synthesis outputs must carry E2 citations.</li>
+          <li><strong>Unlocks:</strong> E5 (Role-Specific Intelligence) — persona-specific synthesis in E5 requires a rich, curated LTM to draw on; without E3, E5 produces role-framed outputs from a sparse knowledge base which defeats its purpose.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="epic-card">
+    <div class="epic-header">
+      <h3>E4: Multi-Channel Capture</h3>
+      <div class="epic-badges">
+        <span class="badge badge-mid">Mid</span>
+        <span class="badge badge-p2">P2</span>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Intent</div>
+      <div class="epic-field-value">
+        <p>The most valuable strategic thinking often happens in contexts where it is hardest to capture: a Slack thread with a co-founder, a voice note after a board meeting, a WhatsApp message during a commute. CLI-only capture constrains Chronos to deliberate, desktop-bound interactions — missing the spontaneous, high-signal moments that strategic leaders most need to preserve. Each uncaptured channel is a leak in the knowledge base: thinking that happens in that channel is permanently lost to the compounding system. Over time, a knowledge base built only from CLI inputs is structurally incomplete because it systematically misses an entire category of where strategic decisions are actually made.</p>
+        <p>After this epic ships, a CTO can forward a WhatsApp thread about a technology bet decision to the Chronos bot and have it captured, classified, and stored with full fidelity. A founder can send a Telegram voice note after an investor call and have the key decisions extracted and routed to the appropriate intent pipeline. The system guarantees that capture-to-stored latency stays below 5 seconds across all supported channels, and that the quality of downstream synthesis from multi-channel captures is indistinguishable from CLI captures. Users who have adopted two or more channels report their knowledge base feels more complete — capturing the thinking that used to fall through the cracks.</p>
+        <p>Multi-channel capture is what makes Chronos ambient rather than deliberate. The vision requires leaders to capture from wherever they think — not just from a terminal window. Shipping this in the mid horizon (after the intent engine and traceability layer are proven) ensures that when new channels are added, the quality bar is already set and the pipeline is hardened. This epic also directly addresses the cold start problem: users who can capture from chat and voice immediately have more paths to populate their knowledge base, accelerating the time-to-value that E3 depends on. Channel expansion is also a user acquisition story — each new channel integration is a distribution channel for new users.</p>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Constraints</div>
+      <div class="epic-field-value">
+        <ul>
+          <li><strong>In scope:</strong> Chat platform integrations: Discord bot, Telegram bot, WhatsApp Business API integration. Channel-agnostic capture pipeline: a normalization layer that converts channel-specific input formats to the canonical signal format before routing to E1 intent engine. Capture-to-stored latency monitoring per channel — must stay below 5 seconds. Quality parity testing: automated comparison of synthesis output quality between CLI-captured and chat-captured signals on equivalent content. Groundwork for voice capture: audio input parsing and transcription pipeline (stub), to be fully activated in a follow-on epic. Groundwork for web capture: browser extension or bookmarklet stub, not full implementation.</li>
+          <li><strong>Out of scope:</strong> Voice capture full implementation beyond transcription stub (deferred post-mid horizon). Web capture full implementation (deferred). Any channel that requires native mobile app development. Cross-platform notification or response features — Chronos sends confirmations back through the channel but does not initiate conversations. Channel-specific personalization or formatting beyond the canonical signal normalization.</li>
+          <li><strong>Must not break:</strong> E1 intent routing — all channel inputs must pass through the intent engine unchanged after normalization; channel source must not alter intent classification. E3 compounding knowledge base — signals captured from new channels must be eligible for LTM promotion through the same quality gating rules as CLI captures.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Success Scenarios</div>
+      <div class="epic-field-value">
+        <ul>
+          <li>Given a user forwards a chat message from a Discord server to the Chronos bot describing a technology decision, when Chronos processes the message, then the signal is captured, classified to the correct intent, stored in STM, and a confirmation is sent back to the Discord channel — all within 5 seconds.</li>
+          <li>Given equivalent strategic content is captured once via CLI and once via Telegram, when both signals are used as sources in a synthesis query, then the output quality (as rated by a blind review) shows no measurable difference between the two source channels.</li>
+          <li>Given a user has been using Chronos for 30 days, when their channel usage is reviewed, then they have captured from at least 2 distinct channels, demonstrating that multi-channel adoption is occurring rather than channel consolidation back to CLI.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Failure Conditions</div>
+      <div class="epic-field-value">
+        <ul>
+          <li>Capture-to-stored latency exceeds 5 seconds on any supported channel under normal load, even for a single message — the sub-5-second guarantee is absolute, not a p95 target.</li>
+          <li>A synthesis output downstream of a multi-channel capture produces lower quality results (factual gaps, missing context, incorrect intent classification) than an equivalent CLI capture — demonstrating that channel normalization is degrading signal quality.</li>
+          <li>After 30 days of availability, fewer than 50% of active users have captured from a second channel, indicating the multi-channel value proposition is not translating to adoption.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Why Now</div>
+      <div class="epic-field-value">
+        <p>E4 is placed in the mid horizon because it depends only on E1 (not E2 or E3), enabling parallel delivery with E3 if team capacity allows. However, E4 introduces server-side infrastructure for the first time in this architecture — bot framework instances, webhook handlers, and an async message queue — which is a step-change from the CLI-and-file-based near-horizon epics. The WhatsApp Business API approval process adds potential lead time that must be assessed early. Critically, E4 signals must be E3-compatible at the normalization layer even though E3 is a parallel workstream: the canonical signal format must qualify for LTM promotion so the two workstreams connect cleanly when both ship. The deployment target for Chronos must be confirmed before E4 implementation begins.</p>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Dependencies &amp; What It Unlocks</div>
+      <div class="epic-field-value">
+        <ul>
+          <li><strong>Requires:</strong> E1 (Intent Engine) — all channel inputs must pass through E1's intent engine after normalization; without E1's routing layer, multi-channel capture has no processing destination.</li>
+          <li><strong>Unlocks:</strong> No downstream epics depend on E4 directly, but E4 signals feed E3's LTM promotion pipeline when both are live — expanding knowledge base depth through ambient capture from non-CLI channels.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="epic-card">
+    <div class="epic-header">
+      <h3>E5: Role-Specific Intelligence</h3>
+      <div class="epic-badges">
+        <span class="badge badge-long">Long</span>
+        <span class="badge badge-p2">P2</span>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Intent</div>
+      <div class="epic-field-value">
+        <p>The five core intents in E1 are role-agnostic: any user can capture, retrieve, synthesize, decide, or brief. But the shape of a useful output for each intent varies dramatically by role. A CTO asking for synthesis on their AI investments wants a technology-bet framing that connects decisions to architectural direction. A PM asking for the same synthesis wants a prioritization-pattern view that surfaces themes across customer signals. A Founder wants a narrative-evolution view that shows how their strategic thesis has shifted over time. Today, a generic system either produces one-size-fits-none outputs or forces users to specify role context on every query. Neither is acceptable for an AI system meant to be a trusted strategic partner.</p>
+        <p>After this epic ships, a user who selects the CTO persona during onboarding will find that every Chronos interaction is shaped by their role context: retrieval outputs are framed as technology bets with architectural implications, synthesis outputs prioritize patterns in build-vs-buy decisions and team structure signals, and briefing outputs are formatted for board-level technology strategy communication. PM users receive a parallel experience: customer insight synthesis, prioritization rationale retrieval, and strategy review generation. Founders see investor narrative tracking, mental model evolution, and business model decision history. New users reach first meaningful value in under 10 minutes because onboarding populates persona-specific intent handlers immediately.</p>
+        <p>Role-specific intelligence is Chronos's primary differentiation surface in the long horizon. It is what separates a general-purpose AI assistant — which any competitor can build — from a system that speaks the strategic language of a specific leadership role. By shipping this after E3 (compounding knowledge base), persona framing is grounded in a rich, curated knowledge base rather than a sparse session history. The combination of deep knowledge and role-specific synthesis is what enables Chronos to produce outputs that strategic leaders describe as 'this is exactly what I would have said, but faster and more complete.' This epic also directly unlocks the market expansion story: CTO-validated core architecture plus PM and Founder personas transforms a niche tool into a platform for strategic leaders broadly.</p>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Constraints</div>
+      <div class="epic-field-value">
+        <ul>
+          <li><strong>In scope:</strong> Persona onboarding flow: user selects CTO, PM, or Founder persona during setup; onboarding populates at least 5 role-specific intent handlers per persona. Role-specific intent handlers: specialized processing variants for capture, retrieve, synthesize, decide, and brief intents — each producing role-framed outputs. CTO handlers: technology-bet framing, architectural-implication surfacing, build-vs-buy decision patterns. PM handlers: customer insight synthesis by theme, prioritization rationale retrieval, strategy review generation. Founder handlers: investor narrative tracking with version history, mental model evolution synthesis, business model decision audit. Relevance measurement: mechanism for collecting user ratings on role-matched versus generic outputs. Time-to-first-value measurement during onboarding.</li>
+          <li><strong>Out of scope:</strong> Custom persona creation by users (beyond the three defined roles). Enterprise team personas or multi-user role hierarchies. Role-specific UI theming or visual differentiation. Integration with external role-specific tools (e.g., Jira for PMs, cap table tools for Founders). Automated role detection from captured signals (user explicitly selects persona; auto-detection is a future enhancement).</li>
+          <li><strong>Must not break:</strong> E1 intent routing — role-specific handlers must be additive variants within the existing routing architecture, not replacements that break generic intent dispatch for users without a persona selected. E2 traceability — all persona-framed outputs must continue to include source citations and confidence scores; role framing cannot suppress provenance. E3 knowledge base — persona handlers must read from the same LTM layer as generic handlers; they cannot create persona-siloed knowledge stores.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Success Scenarios</div>
+      <div class="epic-field-value">
+        <ul>
+          <li>Given a CTO completes persona onboarding, when they submit a synthesize intent about their recent technology decisions, then the output is framed as a technology-bet analysis with architectural implications and build-vs-buy patterns — and the user rates the output as more relevant than a generic synthesis on the same data by at least 30%.</li>
+          <li>Given a PM user submits a retrieval query about past prioritization decisions, when Chronos returns the response, then the output surfaces customer insight themes and prioritization rationale in a format the user can directly use in a planning meeting — not a raw list of captured signals.</li>
+          <li>Given a new Founder user completes onboarding, when they interact with Chronos for the first time, then they reach a moment of demonstrable value — a retrieved or synthesized output that is directly useful to their work — within 10 minutes of starting onboarding.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Failure Conditions</div>
+      <div class="epic-field-value">
+        <ul>
+          <li>After persona handlers are deployed, users in persona-matched experiences rate output relevance at the same level as generic mode — indicating the role framing is not producing meaningfully differentiated outputs.</li>
+          <li>A persona-selected user submits a retrieval or synthesis intent and receives an output that makes no reference to their role context — the response is identical to what a user with no persona selected would receive.</li>
+          <li>Adding persona handling to E1 routing causes intent detection accuracy to drop below 80% for any persona, indicating that role-specific routing variants are conflicting with the base intent classification model.</li>
+          <li>New users with a persona selected take longer than 10 minutes to reach first demonstrable value during onboarding, indicating the persona onboarding flow is not delivering fast time-to-value.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Why Now</div>
+      <div class="epic-field-value">
+        <p>E5 is correctly placed in the long horizon — it requires both E1 (routing dispatch layer with persona extension points) and E3 (a rich LTM to draw on). The persona handler interface must be stubbed in E1's design to avoid E1 refactoring when E5 ships — this is a design-time constraint on E1, not a delivery dependency on E5. Relevance measurement instrumentation must also be in place from E1 so that baseline data exists when E5 launches and the 30% relevance improvement criterion can be measured. The 15 handler definitions (5 intents x 3 personas) represent significant prompt engineering surface area; building CTO handlers first and validating the pattern before parallelizing to PM and Founder is the risk-mitigated delivery approach.</p>
+      </div>
+    </div>
+
+    <div class="epic-field">
+      <div class="epic-field-label">Dependencies &amp; What It Unlocks</div>
+      <div class="epic-field-value">
+        <ul>
+          <li><strong>Requires:</strong> E1 (Intent Engine) for routing extension points and E3 (Compounding Knowledge Base) for a rich LTM to draw on — persona handlers over a sparse knowledge base produce role-framed generic outputs, not differentiated intelligence.</li>
+          <li><strong>Unlocks:</strong> Market expansion — CTO-validated core architecture plus PM and Founder personas transforms Chronos from a niche CTO tool into a platform for strategic leaders broadly.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="not-doing">
+  <h2>What We're Not Doing</h2>
+  <ul class="not-doing-list">
+    <li><strong>Voice capture full implementation</strong> — Audio transcription pipeline is stubbed in E4 but full voice capture activation is deferred post-mid horizon. Voice introduces async processing complexity that is not on the critical path for the 12-month horizon.</li>
+    <li><strong>Web capture</strong> — Browser extension or bookmarklet is stubbed in E4 but full web capture implementation is deferred. Web capture requires different architectural patterns and is lower-priority than chat platform integrations for the target personas.</li>
+    <li><strong>User-facing knowledge graph UI</strong> — No browsable graph interface, citation dashboard, or knowledge visualization features are in scope for any epic. The interaction model is conversational; graph browsing is a future enhancement.</li>
+    <li><strong>Custom persona creation</strong> — Users choose from three defined personas (CTO, PM, Founder); custom persona creation by users and enterprise team hierarchies are out of scope for E5 and the 12-month horizon.</li>
+    <li><strong>Bulk import and PKM migration tools</strong> — Migrating content from Notion, Obsidian, or other PKM systems is deferred to a post-launch onboarding phase. Cold start is addressed through channel expansion (E4), not bulk import.</li>
+    <li><strong>Multi-user and collaboration features</strong> — Chronos is a personal AI system in this horizon. Knowledge base sharing, team personas, and collaborative synthesis are out of scope for all five epics.</li>
+  </ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="asks">
+  <h2>The Asks</h2>
+  <ul class="asks-list">
+    <li><strong>Confirm the vector store infrastructure decision before E3 begins.</strong> The heartbeat synthesis success criterion — surfacing novel connections not previously visible — almost certainly requires semantic similarity beyond keyword matching. Does the team commit to vector infrastructure (e.g., FAISS or a managed vector store) for the mid horizon, or should the E3 success criterion be revised to what keyword-based radar matching can reliably deliver? This decision gates E3 architecture and must be made before implementation starts, not discovered mid-build.</li>
+    <li><strong>Define the deployment target for Chronos before E4 planning.</strong> E4 introduces server-side infrastructure (bot framework, webhook server, async message queue) for the first time — the architecture is currently entirely CLI and file-based. Where does Chronos run: local machine, VPS, managed cloud, or hybrid? This decision determines the infrastructure workstream scope within E4 and whether deployment capacity exists in the mid horizon alongside E3.</li>
+    <li><strong>Resolve the product intent model coexistence question before E1 design is finalized.</strong> The five product intents (capture/retrieve/synthesize/decide/brief) and the six recipe orchestration intents (clarify/decide/validate/consult/advise/design) are two distinct models in the same system. E1 must be designed knowing which model it implements and how the two layers coexist — this is not an implementation detail, it is an architectural boundary that affects E1 skill design, the consult-cto recipe, and E5 persona handler routing. A clear architectural decision here prevents conflation that would require refactoring across multiple epics.</li>
+    <li><strong>Approve the E1 persona extension point design as a delivery pre-condition.</strong> E5 requires persona handler variants within E1's routing architecture. If E1 ships without an explicit persona context parameter and extension interface, E5 will require E1 refactoring — adding scope, risk, and delay in the long horizon. The ask is to treat the persona handler interface stub as a delivery requirement within E1, not a deferred design decision. Approval of this scope boundary is needed before E1 implementation begins.</li>
+  </ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="assumptions">
+  <h2>Key Assumptions</h2>
+  <ul class="assumptions-list">
+    <li>Strategic leaders want persistent AI memory and will invest the initial effort to build a knowledge base — without this, the compounding flywheel never starts and the cold start problem becomes terminal.</li>
+    <li>Intent detection at useful accuracy (80%+) is achievable with current LLM capabilities across the five strategic intent categories — if this assumption is wrong, E1 requires a fundamentally different approach before any downstream epic can ship.</li>
+    <li>The five-intent product model and the six-intent recipe orchestration model can coexist as distinct architectural layers without conflation — if the boundary is unclear in E1's design, every downstream epic that touches routing is at risk of inheriting the confusion.</li>
+    <li>Vector embeddings or semantic similarity infrastructure will be available and economically viable for the mid-horizon heartbeat synthesis — if this assumption is wrong, the E3 success criterion must be revised before E3 implementation begins, not after.</li>
+    <li>Deployment infrastructure for server-side operation (required by E4) can be provisioned within the mid horizon without displacing E3 delivery — if infrastructure capacity is constrained, E4 may need to slip to the long horizon or E3 scope must be reduced to create capacity.</li>
+  </ul>
+</section>
+
+<footer>
+  Generated by plan-roadmap v1.1.0 &nbsp;·&nbsp; Chronos &nbsp;·&nbsp; 2026-03-05 &nbsp;·&nbsp; .meridian/project/product/chronos/brief-20260305.html
+</footer>
+
+</body>
+</html>

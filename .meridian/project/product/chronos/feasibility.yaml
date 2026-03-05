@@ -1,0 +1,157 @@
+feasibility:
+  slug: "chronos"
+  assessed_at: "2026-03-05T00:00:00Z"
+  epics:
+    - epic_id: "E1"
+      epic_name: "Intent Engine"
+      risk_level: "medium"
+      technical_risks:
+        - risk: "Intent classification accuracy target of 80% across five categories requires a well-designed few-shot or fine-tuned prompt — the existing architecture has only 'clarify' intent active in the consult-cto recipe; no multi-intent classification logic is implemented yet"
+          severity: "high"
+          affected_systems: "phoenix-engine-identify-intents skill, consult-cto command, orchestrator agent"
+          mitigation: "Build and maintain a labeled test set of at least 50 diverse inputs from the start; implement confidence scoring with explicit thresholds before routing; use the existing sequencing-rules.md as the architectural blueprint for the plan-building skill"
+        - risk: "The 15-second interaction-to-value threshold for retrieval and capture intents must be met by routing stubs before downstream pipelines exist — stub responses must still produce meaningful confirmations, not empty ACKs"
+          severity: "medium"
+          affected_systems: "CLI output layer, intent routing dispatch, processing pipeline stubs"
+          mitigation: "Design stubs to return structured acknowledgements that confirm intent classification and extraction context; this satisfies the 'any output within 15 seconds' criterion without requiring full pipeline completion"
+        - risk: "Disambiguation prompt for low-confidence intents requires a clarification loop architecture — this exists in the orchestrator agent design but is not yet implemented as a skill; conflating it with the existing 'clarify' intent in consult-cto.md is a design trap"
+          severity: "medium"
+          affected_systems: "phoenix-engine-identify-intents, orchestrator agent, recipe response gates"
+          mitigation: "Treat disambiguation as a separate routing outcome from 'clarify' intent — disambiguate routes back into intent detection loop, clarify intent routes to strategy-guardian; document the distinction explicitly in updated cto-intents.md"
+        - risk: "The five-intent taxonomy (capture, retrieve, synthesize, decide, brief) does not map 1:1 to existing cto-intents.md which defines: clarify, decide, validate, consult, advise, design — these are two different intent models that must be reconciled before E1 can be built"
+          severity: "high"
+          affected_systems: "cto-intents.md, phoenix-engine-identify-intents skill, consult-cto recipe intent bindings"
+          mitigation: "Define the product intent model (capture/retrieve/synthesize/decide/brief) separately from the recipe orchestration model (clarify/decide/validate/consult/advise); the product intents describe what users want to DO with their knowledge, not how the system routes assistance requests — the intent engine in E1 is a new layer below the existing orchestrator"
+      blockers: []
+      sequencing_constraints: "E1 must be the first epic delivered — every downstream epic (E2 traceability, E3 memory, E4 multi-channel, E5 personas) depends on a functioning intent classification and routing layer. The routing stubs required by E1 must be designed with extension points for each downstream pipeline to avoid architectural rework."
+      architecture_impact: "Introduces a new product-level intent layer below the existing Phoenix Engine orchestration layer. Requires new skills: a product-intent-classifier and a pipeline-dispatcher. The existing phoenix-engine-identify-intents and phoenix-engine-build-plan skills serve recipe orchestration, not product intent routing — E1 creates a parallel, product-specific intent detection pathway. CLI becomes the primary interaction surface and must support structured output contracts per intent type."
+      foundation_investment: true
+
+    - epic_id: "E2"
+      epic_name: "Traceability Layer"
+      risk_level: "medium"
+      technical_risks:
+        - risk: "Zero-hallucination guarantee for grounded outputs requires every factual claim to be traceable to a specific signal path — this is structurally impossible to guarantee with LLM generation unless output is constrained to retrieval-augmented generation (RAG) with strict citation enforcement, which is not yet part of the architecture"
+          severity: "high"
+          affected_systems: "LLM generation pipeline, output contracts, citation enforcement layer"
+          mitigation: "Reframe 'zero-hallucination guarantee' as 'zero unlabeled claims' — the system can guarantee that every claim is either cited to a capture or explicitly labeled as training-knowledge-sourced; implement a post-generation citation audit step that flags any claim with no associated source before output is returned to user"
+        - risk: "Confidence scoring that reflects 'proportion of content grounded in user captures versus training knowledge' requires the system to track provenance per claim during generation — this requires structured generation with source anchoring, not freeform generation followed by attribution"
+          severity: "high"
+          affected_systems: "LLM generation layer, confidence scoring model, output schema"
+          mitigation: "Design generation to use a structured template where each section must specify its source before generating content; alternatively, use a two-pass approach: first retrieve relevant signals, then generate only content that can be attributed to those signals"
+        - risk: "Adding citation metadata to outputs must not increase interaction-to-value time beyond E1's 15-second threshold — citation generation adds a retrieval and formatting pass that could push latency above the bound"
+          severity: "medium"
+          affected_systems: "Output pipeline latency, retrieval layer, CLI rendering"
+          mitigation: "Parallelize signal retrieval with generation; pre-fetch likely sources during intent dispatch so they are available when generation completes; set latency budget checkpoints during implementation"
+        - risk: "The vault's radar-signal architecture (signals stored as flat markdown files in category folders) does not include unique signal IDs or stable citation keys — citation format must be defined before E2 is built or file path relocations will break citation provenance in stored outputs"
+          severity: "medium"
+          affected_systems: "Vault signal files, citation format schema, LTM storage"
+          mitigation: "Define a stable citation format using relative paths from vault root plus capture date; avoid absolute paths or filename-only references; add a signal ID field to signal file frontmatter before E2 implementation begins"
+      blockers:
+        - "E1 must ship first — E2 adds traceability metadata to the output contracts defined by E1's intent routing; without E1's pipeline stubs and output contract definitions, there is no structure to attach citations to"
+      sequencing_constraints: "E2 must follow E1 (blocked by E1 output contracts). E2 must precede E3 — E3's synthesis engine produces outputs that must carry citations; shipping E3 before E2 means the compounding knowledge base produces untraced outputs that would need retroactive citation retrofit."
+      architecture_impact: "Introduces a citation layer as an output post-processor in the intent pipeline. Requires a new output schema that wraps all retrieval and synthesis responses with source citations and confidence scores. Vault signal files require a stable citation key in their frontmatter. The CLI rendering layer must be extended to display citations in a human-readable format."
+      foundation_investment: true
+
+    - epic_id: "E3"
+      epic_name: "Compounding Knowledge Base"
+      risk_level: "high"
+      technical_risks:
+        - risk: "Two-layer memory architecture (STM + LTM) must be designed for the product use case, not to be confused with the existing STM/LTM in the Phoenix Engine — the existing .phoenix-os/stm/ is recipe-scoped session state, not a user knowledge persistence layer; building on top of the wrong layer is an architectural trap"
+          severity: "high"
+          affected_systems: ".phoenix-os/stm/ (existing recipe STM), new product-level STM and LTM stores, vault architecture"
+          mitigation: "Define a separate storage path for product-level user knowledge (e.g., .chronos/memory/stm/ and .chronos/memory/ltm/ or an external store); do not reuse or extend the recipe STM workspace — these are fundamentally different: recipe STM is ephemeral per-session, product LTM is persistent across months"
+        - risk: "Quality gating rules (promotion from STM to LTM based on recurrence, explicit user promotion, synthesis reference count) require a cross-session signal tracking mechanism that does not exist in the current architecture — there is no signal occurrence counter, reference tracking, or user promotion API"
+          severity: "high"
+          affected_systems: "Signal storage layer, quality gating engine, session persistence"
+          mitigation: "Design a signal metadata store that persists independently of signal content — track capture count, promotion status, reference count, and last-accessed date per signal; implement promotion as an explicit async process rather than inline during capture"
+        - risk: "Heartbeat synthesis engine requires semantic similarity computation across potentially hundreds of signals to surface novel connections — the current vault uses keyword-based radar matching, not vector similarity; scaling to 'at least 2 novel insights per week' with keyword matching alone is likely insufficient"
+          severity: "high"
+          affected_systems: "Heartbeat synthesis engine, signal similarity computation, LTM query layer"
+          mitigation: "Evaluate whether vector embeddings (e.g., OpenAI embeddings + local FAISS or a managed vector store) are necessary for the heartbeat synthesis target; keyword-based radar matching may work for initial retrieval but will miss cross-domain connections that make heartbeat valuable; treat embedding infrastructure as a required architectural decision before E3 implementation"
+        - risk: "LTM retrieval latency exceeding 15 seconds at scale — with hundreds of signals, semantic search over flat markdown files will be too slow without indexing"
+          severity: "medium"
+          affected_systems: "LTM retrieval pipeline, signal indexing, query latency"
+          mitigation: "Build an index layer over LTM from the start (even a simple inverted keyword index); plan for vector index if heartbeat synthesis requires it; measure retrieval latency at 50, 100, and 200 signals during development"
+        - risk: "Automatic linking between signals using semantic similarity is an XL-effort component that could grow unbounded — scope must be tightly defined or E3 will not ship within the mid horizon"
+          severity: "medium"
+          affected_systems: "Signal linking engine, automatic relationship graph"
+          mitigation: "Scope automatic linking to explicit radar-based co-membership first (signals sharing a radar are candidates for linking); defer deep semantic similarity linking to post-E3 iteration; ship heartbeat with radar-co-membership links and measure if it meets the 'novel connections' success criterion"
+      blockers:
+        - "E1 and E2 must ship first — E3 retrieval intents must dispatch through E1's routing layer, and all E3 synthesis outputs must carry E2 citations"
+        - "Vector store infrastructure decision must be made before E3 implementation begins — the heartbeat synthesis success criterion ('insights not previously visible') almost certainly requires semantic similarity beyond keyword matching; if vector infrastructure is not available, the success criterion must be revised before coding starts"
+      sequencing_constraints: "E3 is gated on E1 and E2 (hard dependency). E3 unlocks E5 — persona-specific synthesis in E5 requires a rich, curated LTM to draw on; without E3, E5 produces role-framed outputs from a sparse knowledge base which defeats its purpose."
+      architecture_impact: "Introduces the largest architectural footprint of all epics. Requires: a product-level persistent memory store (separate from recipe STM), a quality gating engine, a signal metadata tracker, a heartbeat scheduler, a synthesis engine with semantic similarity (likely requiring vector infrastructure), and a health metrics layer. The existing vault structure (radars + signals in markdown) serves as the LTM architectural pattern but needs significant extension for write, promotion, and indexing operations."
+      foundation_investment: false
+
+    - epic_id: "E4"
+      epic_name: "Multi-Channel Capture"
+      risk_level: "medium"
+      technical_risks:
+        - risk: "WhatsApp Business API requires business account approval and has significant setup friction — it cannot be accessed with a personal account; if the target user (CTO/PM/Founder) is using personal WhatsApp, the integration may be gated behind a business API approval process that adds weeks of lead time"
+          severity: "medium"
+          affected_systems: "WhatsApp integration, channel setup, onboarding flow"
+          mitigation: "Start with Discord and Telegram bots (no approval required, developer-friendly) and treat WhatsApp as a follow-on; or validate WhatsApp Business API access early in E4 planning to surface the approval requirement before it becomes a critical path blocker"
+        - risk: "Channel-agnostic normalization layer must preserve semantic fidelity across very different input formats — a Telegram voice note transcription has different structure, metadata, and noise characteristics than a Discord text message; if normalization loses context (speaker intent, emotional tone, implicit decisions), downstream synthesis quality degrades"
+          severity: "medium"
+          affected_systems: "Channel normalization pipeline, signal canonical format, synthesis quality"
+          mitigation: "Design the canonical signal format to include channel-specific metadata fields (source_channel, raw_content, transcription_confidence for voice) as optional enrichment rather than stripping them; define quality parity testing criteria before normalization is built so success can be measured"
+        - risk: "Capture-to-stored latency below 5 seconds is an absolute guarantee across all channels under normal load — this is architecturally demanding for voice transcription which adds an async transcription step; the stub architecture must be designed to meet this for text channels even if voice transcription is asynchronous"
+          severity: "medium"
+          affected_systems: "Capture pipeline latency, voice transcription, channel ingestion"
+          mitigation: "Decouple capture confirmation (immediate ACK within 5 seconds) from full processing (transcription, classification, storage) — the 5-second guarantee applies to 'capture acknowledged and queued', not 'fully processed and indexed'; clarify this interpretation in E4 acceptance criteria before implementation"
+        - risk: "The existing architecture has no bot infrastructure, webhook handlers, or async message queue — all three are required for multi-channel capture; the scope of infrastructure to build is larger than the channel integrations themselves"
+          severity: "high"
+          affected_systems: "Bot infrastructure, webhook handlers, async message queue, deployment"
+          mitigation: "Treat infrastructure scaffolding (bot framework, webhook server, message queue) as a separate workstream within E4 that must complete before channel integrations begin; use an existing bot framework (telegraf for Telegram, discord.js) rather than building from scratch; assess deployment requirements early (E4 requires a running server, unlike CLI-only E1/E2/E3)"
+      blockers:
+        - "E1 must ship first — all channel inputs must pass through E1's intent engine after normalization; without E1's routing layer, multi-channel capture has no processing destination"
+      sequencing_constraints: "E4 depends on E1 only (not E2 or E3), so it can begin in the mid horizon in parallel with E3 if team capacity allows. However, E4 signals must be E3-compatible when E3 ships — the normalization layer must produce signals that qualify for LTM promotion."
+      architecture_impact: "Introduces server-side infrastructure for the first time — the existing architecture is entirely CLI and file-based. Requires: bot framework instances (Telegram, Discord), a webhook server, a message queue for async processing, a channel normalization pipeline, and deployment infrastructure. This is an infrastructure step-change from the near-horizon epics."
+      foundation_investment: false
+
+    - epic_id: "E5"
+      epic_name: "Role-Specific Intelligence"
+      risk_level: "medium"
+      technical_risks:
+        - risk: "Persona-specific intent handlers must be additive variants within E1's routing architecture — if E1 routes based on a flat five-intent taxonomy (capture/retrieve/synthesize/decide/brief), persona variants must wrap each intent with a role framing layer, not replace the routing logic; the design must be extensible from the start of E1 or E5 will require E1 refactoring"
+          severity: "medium"
+          affected_systems: "E1 intent routing, persona handler layer, output framing"
+          mitigation: "Define the persona handler interface as part of E1 design even though E5 implements it; build E1 routing to accept an optional persona context parameter that flows through to output formatting; this prevents the architectural rework that would otherwise be required when E5 ships"
+        - risk: "Relevance measurement ('users rate output as more relevant than generic synthesis by at least 30%') requires instrumentation and a feedback loop that does not exist in the current architecture — there is no user rating mechanism, output comparison framework, or A/B testing infrastructure"
+          severity: "medium"
+          affected_systems: "User feedback layer, output comparison, relevance measurement"
+          mitigation: "Design a lightweight rating signal (thumbs up/down or 1-5 rating attached to each output) as a first-class output field from E1; by the time E5 ships, there will be historical data to compare; do not defer instrumentation to E5 or the success criterion cannot be measured at launch"
+        - risk: "Persona onboarding populating 'at least 5 role-specific intent handlers per persona' requires 15 handler definitions across 3 personas (CTO, PM, Founder) — each handler must produce meaningfully differentiated output for each of the 5 product intents; this is a significant prompt engineering surface area"
+          severity: "medium"
+          affected_systems: "Persona handler definitions, prompt engineering, onboarding flow"
+          mitigation: "Build and validate one persona end-to-end (CTO) before parallelizing to PM and Founder; use the existing cto-intents.md and vault signals as the source material for CTO handler design; PM and Founder handlers can be built in parallel once the handler pattern is proven"
+        - risk: "Adding persona handling must not cause E1 intent detection accuracy to drop below 80% for any persona — if persona context is injected into the classification prompt, it can introduce framing bias that distorts intent detection"
+          severity: "medium"
+          affected_systems: "E1 intent classification, persona context injection, classification accuracy"
+          mitigation: "Keep persona context strictly in the output formatting layer — it must not influence intent classification; classify first against the persona-agnostic taxonomy, then apply persona framing to the output; test intent detection accuracy independently of persona framing during E5 implementation"
+      blockers:
+        - "E1 must ship first — persona handlers are routing variants that require E1's intent dispatch layer"
+        - "E3 must ship first — the value of persona-specific synthesis ('this is exactly what I would have said, but faster and more complete') depends on a rich LTM knowledge base; persona handlers over a sparse knowledge base produce role-framed generic outputs, not differentiated intelligence"
+      sequencing_constraints: "E5 is correctly placed in the long horizon — it depends on both E1 and E3. The persona handler interface should be stubbed in E1's design to avoid E1 refactoring when E5 ships. Relevance instrumentation must be in place from E1 to have baseline measurement data when E5 launches."
+      architecture_impact: "Introduces a persona context layer that wraps the E1 routing and output pipeline. Requires: a persona onboarding flow, a persona context store, 15 role-specific handler definitions (5 intents x 3 personas), and a relevance measurement layer. Architecture impact is additive over E1/E3 rather than structural — provided E1 is designed with the persona extension point from the start."
+      foundation_investment: false
+
+  open_questions:
+    - question: "The five product intents (capture, retrieve, synthesize, decide, brief) defined in the epics are architecturally distinct from the six recipe orchestration intents (clarify, decide, validate, consult, advise, design) in cto-intents.md — which intent model does the E1 intent engine implement, and how do the two models coexist in the same system?"
+      affected_epics: ["E1", "E5"]
+    - question: "Does the heartbeat synthesis engine in E3 require vector embeddings and a vector store, or is the existing radar-based keyword matching architecture sufficient to surface 'novel connections not previously visible' at the stated success rate of 2 insights per week?"
+      affected_epics: ["E3"]
+    - question: "Where does product-level user knowledge (captured signals, LTM) persist — in the local filesystem alongside the vault, in an external database, or in a managed service? This decision affects E3 architecture, E4 server requirements, and the multi-user deployment story."
+      affected_epics: ["E3", "E4"]
+    - question: "The existing vault is user-specific and external ('mounted externally in production') — for E3 and E4, the system must write to user knowledge stores, not just read from them; does the current vault path configuration support write operations, or does a write API need to be defined?"
+      affected_epics: ["E3", "E4"]
+    - question: "E4 requires server-side infrastructure (bot framework, webhook server, message queue) for the first time — what is the deployment target for Chronos, and does the infrastructure team capacity exist to build this within the mid horizon alongside E3?"
+      affected_epics: ["E4"]
+
+  summary:
+    total_epics: 5
+    high_risk_count: 1
+    medium_risk_count: 4
+    blocker_count: 5
+    foundation_epics: ["E1", "E2"]
