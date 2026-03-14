@@ -7,3 +7,15 @@ memory/vault/*
 # Exception: track vault sync metadata (no IP, just status)
 !memory/vault/vault-sync.md
 !memory/vault/IMPORT_STATUS.md
+
+# App build and local runtime artifacts
+.next/
+node_modules/
+.chronos-data/
+coverage/
+data/library/
+.env.local
+.env.vercel
+*.tsbuildinfo
+
+.vercel

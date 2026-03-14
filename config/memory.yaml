@@ -1,0 +1,13 @@
+memory:
+  layer1:
+    type: local
+    connection: ./data/library
+  layer2:
+    provider: local_index
+    connection: ./data/library
+  adapter_path: data/adapter
+  recalibrate_on_change: false
+  stm:
+    token_budget: 7000
+  history:
+    token_budget: 25000

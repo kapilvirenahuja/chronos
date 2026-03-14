@@ -1,0 +1,20 @@
+engine:
+  model: claude-sonnet-4-6
+  model_for_eval_agent: claude-haiku-4-5-20251001
+  token_budget:
+    system_layer: 5000
+    recipe_layer: 3000
+    stm: 7000
+    history: 25000
+    signal: 2000
+  token_tracking: false
+  max_intents_per_query: 4
+  max_parallel_agents: 3
+  max_replans: 3
+  response_channel:
+    inline_word_limit: 140
+    clarification_inline_word_limit: 90
+decision_log:
+  retention_days: 90
+  log_all_classifications: true
+  log_all_ltm_writes: true

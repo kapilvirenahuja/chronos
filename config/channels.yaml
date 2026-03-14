@@ -1,0 +1,12 @@
+channel:
+  messaging:
+    provider: discord
+    discord:
+      server_id: chronos-dev
+      channel_id: chronos-lab
+      dm_enabled: true
+  web:
+    enabled: true
+    base_url: http://localhost:3000
+    page_ttl_hours: 24
+    auth: token

@@ -1,0 +1,11 @@
+heartbeat:
+  interval: "0 8 * * *"
+  quiet_hours:
+    start: "22:00"
+    end: "07:00"
+    timezone: Asia/Kolkata
+  notification:
+    delivery_time: "09:00"
+    enabled_types: all
+    max_words: 55
+  batch_size: 5

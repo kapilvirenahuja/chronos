@@ -1,0 +1,14 @@
+{
+  "framework": "nextjs",
+  "public": true,
+  "crons": [
+    {
+      "path": "/api/heartbeat",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/notifications/dispatch",
+      "schedule": "0 9 * * *"
+    }
+  ]
+}

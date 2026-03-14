@@ -1,0 +1,22 @@
+session:
+  max_active_sessions: 5
+  clear_commands:
+    - /clear
+  new_commands:
+    - /new
+  load_commands:
+    - /load
+  persist_indefinitely: true
+  hooks:
+    on_session_start:
+      - stm.initialize
+      - ltm.semantic_load
+    on_message_received:
+      - session.resume
+    post_response:
+      - stm.cleanup
+      - decision_log.write
+    on_session_clear:
+      - session.archive
+    post_session_archive:
+      - heartbeat.trigger_learning

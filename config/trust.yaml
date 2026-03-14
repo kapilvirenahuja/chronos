@@ -1,0 +1,7 @@
+trust:
+  owner_ids:
+    - owner-dev
+  trusted_ids: []
+  trusted_recipes: []
+  guest_recipes: []
+  unknown_action: reject_with_guidance
