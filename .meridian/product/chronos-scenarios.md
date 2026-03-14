@@ -39,7 +39,7 @@
 
 ### SC-CAP-002: Silent burst capture (multiple signals in rapid succession)
 
-**Description:** Owner sends 5 thoughts within 30 seconds via WhatsApp.
+**Description:** Owner sends 5 thoughts within 30 seconds via Discord.
 
 **Expected behavior:**
 - All 5 signals are stored individually in the signal store
@@ -51,7 +51,7 @@
 - Timestamps are ordered correctly
 - Zero outbound messages
 
-**Automation:** Automated (API test) — send 5 messages, query signal store for count, ordering, and absence of outbound messages.
+**Automation:** Automated (API test) — send 5 messages via Discord, query signal store for count, ordering, and absence of outbound messages.
 
 ---
 
@@ -99,7 +99,7 @@
 - Classification decisions are logged in the decision audit log
 
 **Pass criteria:**
-- All 3 signals have status changed from `unclassified` to `classified` or `review-pending`
+- All 3 signals have status changed from `unclassified` to `classified` or `review_pending`
 - Decision audit log contains 3 entries with: decision type = `classification`, confidence score, source signal paths
 
 **Automation:** Automated (integration test) — seed signal store, trigger heartbeat, assert classification status and audit log entries.
@@ -129,12 +129,12 @@
 **Description:** A signal is ambiguous (e.g., "The flywheel effect applies to both product growth and team culture" — could be leadership or innovation radar).
 
 **Expected behavior:**
-- Signal status set to `review-pending`
+- Signal status set to `review_pending`
 - A review item is created on the web channel
 - Owner receives a notification via messaging channel pointing to the review surface
 
 **Pass criteria:**
-- Signal status = `review-pending`
+- Signal status = `review_pending`
 - Web channel review queue contains this signal
 - Messaging channel received a notification with a link to the review surface
 - Audit log records confidence < threshold
@@ -575,17 +575,17 @@
 
 ### SC-SES-005: Sessions are topic-based, not channel-based
 
-**Description:** Owner creates a session via Discord, then sends a consult message related to the same topic via WhatsApp.
+**Description:** Owner creates a session via Discord `/session new`, then sends an `/ask` in a different Discord channel referencing the same session.
 
 **Expected behavior:**
-- The same session can be referenced from both channels
-- Session context is preserved regardless of input channel
+- The same session can be loaded from any Discord channel
+- Session context is preserved regardless of which channel the command was sent from
 
 **Pass criteria:**
-- Session loaded from WhatsApp contains the same STM as when last used from Discord
+- Session loaded from a different Discord channel contains the same STM
 - No new duplicate session is created
 
-**Automation:** Automated (integration test) — create session via Discord API, load session via WhatsApp API, assert same STM.
+**Automation:** Automated (integration test) — create session via Discord, load session from different channel context, assert same STM.
 
 ---
 
@@ -826,19 +826,20 @@
 
 ---
 
-### SC-TRU-002: Non-owner is rejected on all channels
+### SC-TRU-002: Non-owner is rejected
 
-**Description:** Messages arrive from unknown users on Discord and WhatsApp.
+**Description:** Messages arrive from unknown Discord users who are not the configured owner.
 
 **Expected behavior:**
 - Messages are rejected before reaching signal store
 - No signals are created
+- Rejection is logged to audit log with decision_type = 'trust_rejection'
 
 **Pass criteria:**
 - Signal store has no entries for non-owner messages
-- Trust layer logged rejections
+- Audit log contains a trust_rejection entry with the sender_id
 
-**Automation:** Automated (API test) — send from non-owner accounts, assert rejection.
+**Automation:** Automated (API test) — send from non-owner Discord account, assert signal store empty, assert audit log entry.
 
 ---
 

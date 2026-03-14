@@ -303,7 +303,7 @@ The Python engine exposes a headless REST API consumed by the Next.js web app. B
 |--------|------|---------|------|
 | `POST` | `/api/v1/review/{id}/action` | Execute review action (reclassify, reject, approve, feedback) | Engine secret |
 | `POST` | `/api/v1/recipe/{id}/resume` | Resume paused recipe with human input | Engine secret |
-| `POST` | `/api/v1/heartbeat/trigger` | Trigger classification heartbeat | Engine secret |
+| `POST` | `/api/v1/heartbeat/classify` | Trigger classification heartbeat | Engine secret |
 | `POST` | `/api/v1/heartbeat/promote` | Trigger promotion heartbeat | Engine secret |
 | `GET`  | `/api/v1/status` | Health check | None |
 

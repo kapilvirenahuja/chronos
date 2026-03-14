@@ -134,46 +134,9 @@ Trigger memory promotion. Called manually or by long-cadence cron.
 
 ---
 
-### GET `/api/v1/audit`
+### Note: Audit Log Reads
 
-Query the decision audit log with filters.
-
-**Query parameters:**
-| Param | Type | Description |
-|-------|------|-------------|
-| `recipe` | string | Filter by recipe name |
-| `decision_type` | string | Filter by type (classification, synthesis, promotion, revision, review) |
-| `from` | ISO 8601 | Start of date range |
-| `to` | ISO 8601 | End of date range |
-| `min_confidence` | float | Minimum confidence threshold |
-| `max_confidence` | float | Maximum confidence threshold |
-| `limit` | int | Max results (default 50) |
-| `offset` | int | Pagination offset |
-
-**Response (200):**
-```json
-{
-  "entries": [
-    {
-      "id": 1,
-      "timestamp": "2026-03-14T10:00:00Z",
-      "recipe": "capture_classify",
-      "session_id": "uuid | null",
-      "decision_type": "classification",
-      "input": {},
-      "output": {},
-      "confidence": 0.85,
-      "sources": ["signals/ai/augmentation-principle.md"],
-      "owner_feedback": null,
-      "changes_made": null,
-      "trace_id": "langfuse-trace-id"
-    }
-  ],
-  "total": 100,
-  "limit": 50,
-  "offset": 0
-}
-```
+The audit log is read directly from Postgres by the Next.js web app (Drizzle ORM) — it does NOT go through the engine API. The `/decisions` page queries the `audit_log` table directly with filters. No engine endpoint needed for reads.
 
 ---
 
@@ -211,6 +174,57 @@ HTTP status codes:
 - `404` — resource not found
 - `409` — conflict (wrong state for operation)
 - `500` — internal error
+
+---
+
+## Shared Data Shapes
+
+### Artifact `structured` JSONB Schema
+
+Both engine (writes) and web (reads) must agree on this shape:
+
+```typescript
+interface ArtifactStructured {
+  title: string
+  sections: Array<{
+    heading: string
+    content: string                // markdown
+  }>
+  sources: Array<{
+    claim: string                  // the specific claim being sourced
+    signal_path: string            // vault signal path (e.g., "signals/ai/augmentation-principle.md")
+  }>
+  confidence: number               // 0.0–1.0
+  training_sourced: string[]       // claims from model training, not vault
+  confidence_gaps: string[]        // specific areas where more signals would increase confidence
+  metadata: {
+    recipe: string                 // "consult_cto"
+    session_id: string             // UUID
+    timestamp: string              // ISO 8601
+    role_profile: string           // "cto"
+    radars_matched: string[]       // radar categories that contributed
+  }
+}
+```
+
+### Audit Log Entry Shape
+
+```typescript
+interface AuditLogEntry {
+  id: number
+  timestamp: string                // ISO 8601
+  recipe: string | null            // null for trust_rejection
+  session_id: string | null
+  decision_type: "classification" | "synthesis" | "promotion" | "revision" | "review" | "trust_rejection"
+  input: Record<string, unknown>
+  output: Record<string, unknown>
+  confidence: number | null
+  sources: string[]                // vault signal paths
+  owner_feedback: string | null
+  changes_made: string | null
+  trace_id: string | null          // Langfuse trace ID
+}
+```
 
 ---
 

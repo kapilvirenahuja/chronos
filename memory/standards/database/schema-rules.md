@@ -32,4 +32,4 @@ Mutable tables also have:
 ## Enums
 
 - Define as Postgres ENUMs (not string columns)
-- Add new values via ALTER TYPE ... ADD VALUE (Alembic migration)
+- Add new values via ALTER TYPE ... ADD VALUE (applied via Drizzle push or direct SQL)

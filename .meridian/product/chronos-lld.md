@@ -21,10 +21,10 @@ Both share **Neon Postgres** (with pgvector) as the system of record. The Python
 ```
 ┌─────────────────────┐     ┌──────────────────────────┐
 │   Python Engine      │     │   Next.js Web (Vercel)   │
-│   (Railway/Fly.io)   │     │                          │
+│   (Railway)   │     │                          │
 │                      │     │  /artifacts/[id]         │
 │  Discord Bot (WS)    │◄───►│  /review                 │
-│  Agent Loop          │ API │  /api/webhooks/heartbeat │
+│  Agent Loop          │ API │  /api/heartbeat          │
 │  Heartbeat Scheduler │     │  /api/review/[id]/action │
 │  Embedding Pipeline  │     │  /sessions               │
 │                      │     │                          │
@@ -104,7 +104,7 @@ chronos/
 ├── .meridian/product/              # Product docs (vision, spec, LLD, scenarios)
 ├── philosophy/                     # IDD, Phoenix, PCAM foundations
 │
-├── engine/                         # Python engine (Railway/Fly.io)
+├── engine/                         # Python engine (Railway)
 │   ├── chronos/
 │   │   ├── __init__.py
 │   │   ├── main.py                 # Discord bot + scheduler + internal API startup
@@ -190,7 +190,7 @@ chronos/
 │   │   │   └── session-list.tsx
 │   │   │
 │   │   └── lib/
-│   │       ├── db.ts               # Drizzle/Prisma client (reads from Neon)
+│   │       ├── db.ts               # Drizzle ORM client (reads from Neon)
 │   │       ├── engine-client.ts    # HTTP client to Python engine API
 │   │       └── auth.ts             # Token verification
 │   │
@@ -200,7 +200,7 @@ chronos/
 │   └── vercel.json
 │
 ├── db/
-│   └── migrations/                 # Shared Postgres migrations (Drizzle or Alembic)
+│   └── schema.sql                  # Postgres schema (single source of truth, applied via Drizzle push)
 │
 ├── vault/                          # CTO domain cartridge seed data
 │   ├── radars/
@@ -354,11 +354,11 @@ CREATE TABLE artifacts (
 CREATE TABLE audit_log (
     id              BIGSERIAL PRIMARY KEY,
     timestamp       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    recipe          VARCHAR(100) NOT NULL,
+    recipe          VARCHAR(100),                -- null for trust_rejection (no recipe context)
     session_id      UUID REFERENCES sessions(id),
-    decision_type   VARCHAR(50) NOT NULL,
+    decision_type   VARCHAR(50) NOT NULL,        -- classification, synthesis, promotion, revision, review, trust_rejection
     input           JSONB NOT NULL,
-    output          JSONB NOT NULL,
+    output          JSONB NOT NULL DEFAULT '{}', -- empty for trust_rejection
     confidence      FLOAT,
     sources         JSONB DEFAULT '[]',
     owner_feedback  TEXT,
@@ -488,7 +488,7 @@ LIMIT $3;
 
 ### 2.4 Signal Classification with RAG
 
-During heartbeat classification, signals are matched semantically against vault signals to determine radar category:
+During heartbeat classification, signals are matched semantically against vault signals to determine radar category. **Confidence threshold: 0.7** — signals below this are flagged for owner review.
 
 ```python
 async def classify_with_rag(signal_id: str, signal_text: str) -> dict:
@@ -599,14 +599,89 @@ async def discover_relationships(signal_ids: list[str]) -> str:
 
 ## 4. Core Runtime: Agent Loop (Python)
 
-Unchanged from v1.0 — `tool_runner` wrapper with state persistence and gate detection. See §2 of previous LLD version for full code. Key addition:
+### 4.1 Agent Loop
 
-### 4.1 Context Window Management (Updated)
+```python
+from anthropic import Anthropic, beta_tool
+from langfuse import observe
 
-- `tool_runner` compaction at 100k tokens
+@observe(name="agent_loop")
+async def run_recipe(
+    recipe_run_id: str,
+    recipe_prompt: str,
+    tools: list,               # list of @beta_tool functions
+    messages: list,            # conversation history (restored from DB on resume)
+    gate_conditions: dict,     # gate detection rules per recipe
+    session_id: str,
+) -> GateResult:
+    client = Anthropic()
+
+    runner = client.beta.messages.tool_runner(
+        model="claude-sonnet-4-20250514",
+        max_tokens=8192,
+        system=recipe_prompt,
+        tools=tools,
+        messages=messages,
+        compaction_control={
+            "enabled": True,
+            "context_token_threshold": 100_000,
+        },
+    )
+
+    for response in runner:
+        messages.append({"role": "assistant", "content": response.content})
+        await persist_agent_state(recipe_run_id, messages)
+
+        gate = check_gates(response, gate_conditions)
+        if gate:
+            return gate
+
+    return GateResult(gate_type="synthesis", output=response.content)
+```
+
+### 4.2 State Persistence for Human Pause
+
+```python
+async def pause_recipe(recipe_run_id: str, state: str, notification: dict):
+    await update_recipe_state(recipe_run_id, state)
+    await send_notification(notification)
+    # Agent loop ends here. Resume handler picks up later.
+```
+
+### 4.3 Resume Handler
+
+```python
+@observe(name="resume_recipe")
+async def resume_recipe(recipe_run_id: str, human_input: dict):
+    run = await load_recipe_run(recipe_run_id)
+    messages = run.agent_state["messages"]
+    messages.append({"role": "user", "content": format_human_feedback(human_input)})
+
+    await log_decision(
+        recipe=run.recipe,
+        decision_type="review",
+        input=human_input,
+        owner_feedback=human_input.get("feedback"),
+    )
+
+    recipe = load_recipe(run.recipe)
+    return await run_recipe(
+        recipe_run_id=recipe_run_id,
+        recipe_prompt=recipe.prompt,
+        tools=recipe.tools,
+        messages=messages,
+        gate_conditions=recipe.gate_conditions,
+        session_id=run.session_id,
+    )
+```
+
+### 4.4 Context Window Management
+
+- `tool_runner` compaction at 100k tokens — auto-summarizes older turns
 - Domain cartridge loading uses RAG (vector search) — only semantically relevant signals loaded
 - STM token budget: 50k for vault context
 - Signal embeddings stored in Postgres, not recomputed per query
+- Each skill tool returns structured string, not verbose prose
 
 ---
 
@@ -839,7 +914,7 @@ async def review_action(item_id: str, body: ReviewActionBody):
         await resume_recipe(item_id, {"feedback": body.text})
     return {"status": "ok"}
 
-@app.post("/heartbeat/trigger", dependencies=[Depends(verify_engine_secret)])
+@app.post("/api/v1/heartbeat/classify", dependencies=[Depends(verify_engine_secret)])
 async def trigger_heartbeat():
     """Vercel Cron calls this to trigger classification heartbeat."""
     await heartbeat_classify()
@@ -854,7 +929,105 @@ async def health():
 
 ## 9. Recipe Definitions (Python)
 
-Unchanged from v1.0. System prompts, tool sets, and gate conditions as defined in §6 of the previous version. Key update: the `search_vault` skill now uses vector search instead of keyword-only.
+Each recipe is a Python module defining: `PROMPT` (system prompt), `TOOLS` (list of @beta_tool), `GATE_CONDITIONS` (dict). See `memory/standards/recipes/prompt-standards.md` for prompt requirements.
+
+### 9.1 Recipe 1: Capture & Classify
+
+```python
+HEARTBEAT_PROMPT = """
+You are the Chronos classification engine. Your job is to classify unclassified signals
+using the domain cartridge provided in the context.
+
+For each signal:
+1. Read the signal text
+2. Match it against the radar categories in the cartridge
+3. Assign a radar category and confidence score (0.0-1.0)
+4. If confidence < 0.7, use the `flag_for_review` tool instead of `classify_signal`
+
+You must classify ALL provided signals. Do not skip any.
+After classifying all signals, use the `complete_batch` tool.
+
+Every classification decision MUST be logged. Use the tools — do not classify in text.
+"""
+
+TOOLS = [classify_signal, flag_for_review, complete_batch]
+GATE_CONDITIONS = {"complete_batch": "synthesis"}
+```
+
+### 9.2 Recipe 2: Consult CTO
+
+```python
+CONSULT_PROMPT = """
+You are Chronos, a strategic thinking partner for a CTO.
+You are grounded in the owner's knowledge — the domain cartridge in your context
+contains their captured signals and mental models.
+
+Your workflow:
+1. Assess the request scope. Is it a retrieve (find existing knowledge) or
+   synthesize (create new analysis)?
+2. If the request is underspecified, use `ask_clarification` with grounded questions.
+   Each question MUST cite a signal path from the cartridge.
+3. If you have enough understanding, synthesize findings into a structured artifact
+   using `create_artifact`.
+4. Every claim must have a source. If you use training knowledge, label it explicitly
+   as "training-sourced."
+5. Include a confidence score (0.0-1.0) reflecting how well-grounded the output is.
+6. After creating the artifact, use `publish_and_notify` then `pause_for_review`.
+
+NEVER output intermediate reasoning to the user. Only surface output at gates:
+clarification, synthesis, blocked, or error.
+"""
+
+TOOLS = [
+    ask_clarification,      # → clarification gate
+    search_vault,           # vector search for matching signals
+    create_artifact,        # structured artifact with confidence + citations
+    render_html,            # structured → HTML
+    publish_and_notify,     # publish to web, notify Discord
+    pause_for_review,       # → awaiting_review gate
+    report_blocked,         # → blocked gate
+    revise_artifact,        # update existing artifact in-place
+]
+GATE_CONDITIONS = {
+    "ask_clarification": "clarification",
+    "pause_for_review": "awaiting_review",
+    "report_blocked": "blocked",
+}
+```
+
+### 9.3 Recipe 3: Memory Promotion
+
+```python
+PROMOTION_PROMPT = """
+You are the Chronos memory promotion engine. You analyze accumulated signals
+for stable patterns that deserve promotion to long-term memory (vault).
+
+Your workflow:
+1. Review all classified signals from the past period
+2. Identify reinforced themes (multiple signals supporting the same pattern)
+3. For each candidate pattern:
+   - If clearly durable (3+ reinforcing signals): use `promote_to_vault`
+   - If ambiguous: use `flag_for_review`
+   - If noise (unreinforced): use `archive_signal`
+4. Scan for contradictions between existing vault signals and new patterns.
+   Surface contradictions using `surface_contradiction`.
+5. Scan for novel connections across different radar categories.
+   Surface connections using `surface_connection`.
+6. After processing all candidates, use `publish_promotion_summary` then `pause_for_review`.
+
+Every promotion, archive, and relationship decision MUST be logged.
+"""
+
+TOOLS = [
+    promote_to_vault, archive_signal, flag_for_review,
+    discover_relationships, surface_contradiction, surface_connection,
+    publish_promotion_summary, pause_for_review, report_blocked,
+]
+GATE_CONDITIONS = {
+    "pause_for_review": "awaiting_review",
+    "report_blocked": "blocked",
+}
+```
 
 ---
 
@@ -993,8 +1166,8 @@ Each phase delivers a working end-to-end capability. After each phase, the liste
 | # | Scope | Key Files |
 |---|-------|-----------|
 | 1.1 | Python engine scaffold: `pyproject.toml`, config, Dockerfile, DB connection | `engine/` scaffold |
-| 1.2 | Next.js scaffold: `create-next-app`, Tailwind, Drizzle/Prisma, DB connection | `web/` scaffold |
-| 1.3 | DB schema: `signals`, `radars` tables + pgvector extension | `db/migrations/` |
+| 1.2 | Next.js scaffold: `create-next-app`, Tailwind, Drizzle ORM, DB connection | `web/` scaffold |
+| 1.3 | DB schema: `signals`, `radars` tables + pgvector extension | `db/schema.sql` |
 | 1.4 | Signal store: insert signal + embed on write | `memory/signal_store.py`, `embeddings.py` |
 | 1.5 | Trust layer: owner verification, rejection logging | `trust/auth.py` |
 | 1.6 | Discord adapter: bot startup, message listener, envelope normalization | `channels/discord_adapter.py`, `envelope.py` |
@@ -1027,7 +1200,7 @@ Each phase delivers a working end-to-end capability. After each phase, the liste
 
 | # | Scope | Key Files |
 |---|-------|-----------|
-| 2.1 | DB schema: `vault_signals`, `audit_log`, `recipe_runs` tables | `db/migrations/` |
+| 2.1 | DB schema: `vault_signals`, `audit_log`, `recipe_runs` tables | `db/schema.sql` |
 | 2.2 | CTO seed data: 7 radars + 10-15 signals as markdown files | `vault/radars/*.md`, `vault/signals/**/*.md` |
 | 2.3 | Vault seed script: read markdown → embed → upsert to Postgres | `scripts/seed.py` |
 | 2.4 | Vault reader + vector search (RAG) | `memory/vault.py` |
@@ -1065,7 +1238,7 @@ Each phase delivers a working end-to-end capability. After each phase, the liste
 
 | # | Scope | Key Files |
 |---|-------|-----------|
-| 3.1 | DB schema: add any missing review-related columns | `db/migrations/` |
+| 3.1 | DB schema: add any missing review-related columns | `db/schema.sql` |
 | 3.2 | Web: review queue page (`/review`) — list review-pending signals | `web/src/app/review/page.tsx` |
 | 3.3 | Web: single review item page (`/review/[id]`) — actions: reclassify, reject, approve | `web/src/app/review/[id]/page.tsx` |
 | 3.4 | Web: token authentication for owner access | `web/src/lib/auth.ts` |
@@ -1082,11 +1255,10 @@ Each phase delivers a working end-to-end capability. After each phase, the liste
 | SC-REV-001 | Capture review — reclassify a signal | Automated |
 | SC-REV-002 | Capture review — reject a signal | Automated |
 | SC-REV-005 | Reviewed items re-enter processing loop | Automated |
-| SC-CHN-003 | Web artifact is token-authenticated | Automated |
 | SC-CHN-004 | Low-confidence review notification goes to Discord | Automated |
-| SC-TRU-003 | Web channel enforces token authentication | Automated |
+| SC-TRU-003 | Web review surface enforces token authentication | Automated |
 
-**Exit gate:** 6 scenarios passing. Full capture loop working: Discord → store → heartbeat → classify → review → reclassify → next heartbeat respects correction.
+**Exit gate:** 5 scenarios passing. Full capture loop working: Discord → store → heartbeat → classify → review → reclassify → next heartbeat respects correction.
 
 ---
 
@@ -1098,7 +1270,7 @@ Each phase delivers a working end-to-end capability. After each phase, the liste
 
 | # | Scope | Key Files |
 |---|-------|-----------|
-| 4.1 | DB schema: `sessions`, `artifacts` tables | `db/migrations/` |
+| 4.1 | DB schema: `sessions`, `artifacts` tables | `db/schema.sql` |
 | 4.2 | Session manager: create, load, clear, list + STM persistence | `sessions/manager.py`, `memory/stm.py` |
 | 4.3 | Discord `/session` slash command | `channels/discord_adapter.py` update |
 | 4.4 | Discord `/ask` slash command → starts consult recipe | `channels/discord_adapter.py` update |
@@ -1137,9 +1309,10 @@ Each phase delivers a working end-to-end capability. After each phase, the liste
 | SC-SES-004 | List sessions via Discord | Automated |
 | SC-CHN-001 | Short response stays in Discord | Automated |
 | SC-CHN-002 | Rich artifact routes to web with Discord pointer | Hybrid |
+| SC-CHN-003 | Web artifact is token-authenticated | Automated |
 | SC-AUD-002 | Synthesis decisions logged | Automated |
 
-**Exit gate:** 20 scenarios passing. Full consult loop: ask → clarify → synthesize → artifact on web → Discord pointer. Sessions working.
+**Exit gate:** 21 scenarios passing. Full consult loop: ask → clarify → synthesize → artifact on web → Discord pointer. Sessions working.
 
 ---
 
@@ -1178,7 +1351,7 @@ Each phase delivers a working end-to-end capability. After each phase, the liste
 
 | # | Scope | Key Files |
 |---|-------|-----------|
-| 6.1 | DB schema: `signal_relationships` table | `db/migrations/` |
+| 6.1 | DB schema: `signal_relationships` table | `db/schema.sql` |
 | 6.2 | Signal relationships: CRUD, find contradictions, find clusters | `memory/relationships.py` |
 | 6.3 | Promotion skills: `promote_to_vault`, `archive_signal`, `discover_relationships`, `surface_contradiction`, `surface_connection`, `publish_promotion_summary` | `skills/promote.py` |
 | 6.4 | Recipe 3: Memory Promotion prompt + tool set | `recipes/promotion.py` |
@@ -1252,8 +1425,8 @@ Each phase delivers a working end-to-end capability. After each phase, the liste
 | 0 | Infrastructure accounts + credentials | — | 0 |
 | 1 | Silent capture + trust | 7 | 7 |
 | 2 | Vault + heartbeat classification | 8 | 15 |
-| 3 | Capture review (web + notification) | 6 | 21 |
-| 4 | Consult CTO (clarify + synthesize + sessions) | 20 | 41 |
+| 3 | Capture review (web + notification) | 5 | 20 |
+| 4 | Consult CTO (clarify + synthesize + sessions) | 21 | 41 |
 | 5 | Consult review + revision | 4 | 45 |
 | 6 | Memory promotion | 5 | 50 |
 | 7 | Audit viewer + session pages + evals | 4 | 54 |

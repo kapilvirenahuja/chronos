@@ -583,7 +583,7 @@ Expected result:
 | Channel | v1 Status | Role |
 |---------|-----------|------|
 | **Discord** | Active | Messaging input/output |
-| **WhatsApp** | Active | Messaging input/output |
+| **WhatsApp** | Deferred | Planned post-v1 |
 | **Web** | Active | Review, reading, action surfaces |
 | **Heartbeat** | Active | System-originated scheduled signal |
 | **Telegram** | Deferred | Progressive channel rollout |
