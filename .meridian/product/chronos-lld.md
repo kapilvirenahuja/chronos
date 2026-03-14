@@ -927,128 +927,302 @@ CMD ["python", "-m", "chronos.main"]
 
 ---
 
-## 12. Implementation Task Breakdown (Revised)
+## 12. Implementation Phases (Vertical Slices)
 
-### Phase 0: Prerequisites (manual)
+Each phase delivers a working end-to-end capability. After each phase, the listed scenarios are testable and must pass before moving to the next phase. Tests are written within each phase, not deferred.
 
-| Task | What | Who |
-|------|------|-----|
-| **T0a** | Create Anthropic API key | Owner |
-| **T0b** | Create VoyageAI API key (for embeddings) | Owner |
-| **T0c** | Create Discord app + bot in Developer Portal, enable `message_content` intent, get token | Owner |
-| **T0d** | Create Discord test server (guild), invite bot | Owner |
-| **T0e** | Create Langfuse Cloud account, get keys | Owner |
-| **T0f** | Create Neon Postgres (pgvector enabled) via Vercel | Owner |
-| **T0g** | Create Upstash Redis via Vercel | Owner |
-| **T0h** | Create Railway account, link to repo | Owner |
+---
 
-### Phase 1: Foundation (parallel)
+### Phase 0: Prerequisites (manual, owner)
 
-| Task | Scope | Files | Est. Lines |
-|------|-------|-------|-----------|
-| **T1: DB schema + migrations** | All tables from §1 including pgvector, vault_signals, signal_relationships | `db/migrations/` | ~250 |
-| **T2: Python engine scaffold** | `pyproject.toml`, config, `__init__` files, env setup, Dockerfile | `engine/chronos/config.py`, `pyproject.toml`, `Dockerfile` | ~150 |
-| **T3: Next.js scaffold** | `create-next-app`, Tailwind, Drizzle/Prisma setup, env config | `web/` scaffold | ~100 |
-| **T4: CTO seed data + embed script** | 7 radar definitions, 10-15 seed signals, embedding script | `vault/`, `engine/chronos/scripts/seed.py` | ~600 |
-| **T5: Observability setup** | Langfuse init, `AnthropicInstrumentor` | `engine/chronos/observability/setup.py` | ~50 |
+| # | What | Needed For |
+|---|------|-----------|
+| 0a | Create Anthropic API key | All cognition |
+| 0b | Create VoyageAI API key | Embeddings |
+| 0c | Create Discord app + bot (Developer Portal), enable `message_content` intent | Discord channel |
+| 0d | Create Discord test server, invite bot | Testing |
+| 0e | Create Langfuse Cloud account + keys | Observability |
+| 0f | Create Neon Postgres (pgvector enabled) via Vercel | All persistence |
+| 0g | Create Upstash Redis via Vercel | Scheduling |
+| 0h | Create Railway account | Engine deployment |
 
-### Phase 2: Memory Layer (depends on T1, T2)
+**Exit gate:** `.env` files populated, Discord bot online in test server, `SELECT 1` succeeds on Neon.
 
-| Task | Scope | Files | Est. Lines |
-|------|-------|-------|-----------|
-| **T6: Signal store + embedding pipeline** | Store, query, update status, embed on write | `signal_store.py`, `embeddings.py` | ~200 |
-| **T7: Vault reader + vector search** | Load radars, vector search vault_signals, keyword boost | `vault.py`, `embeddings.py` | ~150 |
-| **T8: Session manager + STM** | CRUD, STM persistence/restore | `sessions/manager.py`, `memory/stm.py` | ~150 |
-| **T9: Audit log** | Append-only write, query with filters | `memory/audit_log.py` | ~80 |
-| **T10: Artifact store** | CRUD, token generation | `memory/artifacts.py` | ~80 |
-| **T11: Signal relationships** | CRUD, find contradictions, find clusters | `memory/relationships.py` | ~120 |
+---
 
-### Phase 3: Core Engine (depends on T5, T7, T8, T9)
+### Phase 1: Scaffold + Silent Capture (end-to-end)
 
-| Task | Scope | Files | Est. Lines |
-|------|-------|-------|-----------|
-| **T12: Agent loop + gates** | `tool_runner` wrapper, state persistence, gate detection, resume | `engine/agent_loop.py`, `gates.py`, `resume.py` | ~250 |
-| **T13: Recipe loader** | Load recipe definitions | `engine/recipe_loader.py` | ~60 |
-| **T14: Domain cartridge (RAG)** | Embed query, vector search, keyword boost, token budget, STM load | `engine/cartridge.py` | ~150 |
-| **T15: Trust layer** | Owner verification, rejection logging | `trust/auth.py` | ~40 |
+**Goal:** Owner sends a Discord message → signal stored in Postgres → silent (no response). Non-owner rejected.
 
-### Phase 4: Channels + Web (depends on T6, T12, T15)
+#### What gets built
 
-| Task | Scope | Files | Est. Lines |
-|------|-------|-------|-----------|
-| **T16: Envelope + gateway + router** | Envelope, inbound dispatch, intent detection, output routing | `channels/envelope.py`, `gateway.py`, `router.py` | ~200 |
-| **T17: Discord adapter** | Bot setup, slash commands (`/session`, `/ask`), message capture | `channels/discord_adapter.py` | ~150 |
-| **T18: Engine internal API** | FastAPI routes for review actions, heartbeat trigger, status | `api/routes.py`, `api/auth.py` | ~100 |
-| **T19: Web — artifact pages** | `/artifacts/[id]` with confidence, citations, training labels | `web/src/app/artifacts/` | ~200 |
-| **T20: Web — review surfaces** | `/review` queue, `/review/[id]` with actions, engine API calls | `web/src/app/review/` | ~250 |
-| **T21: Web — session + audit pages** | `/sessions`, `/decisions` with filters | `web/src/app/sessions/`, `web/src/app/decisions/` | ~200 |
+| # | Scope | Key Files |
+|---|-------|-----------|
+| 1.1 | Python engine scaffold: `pyproject.toml`, config, Dockerfile, DB connection | `engine/` scaffold |
+| 1.2 | Next.js scaffold: `create-next-app`, Tailwind, Drizzle/Prisma, DB connection | `web/` scaffold |
+| 1.3 | DB schema: `signals`, `radars` tables + pgvector extension | `db/migrations/` |
+| 1.4 | Signal store: insert signal + embed on write | `memory/signal_store.py`, `embeddings.py` |
+| 1.5 | Trust layer: owner verification, rejection logging | `trust/auth.py` |
+| 1.6 | Discord adapter: bot startup, message listener, envelope normalization | `channels/discord_adapter.py`, `envelope.py` |
+| 1.7 | Gateway: inbound dispatch (trust check → store signal → silent) | `channels/gateway.py` |
+| 1.8 | Observability: Langfuse init + AnthropicInstrumentor | `observability/setup.py` |
+| 1.9 | Main entrypoint: Discord bot + FastAPI startup | `main.py` |
+| 1.10 | Tests for this phase | `tests/test_capture.py`, `tests/test_trust.py` |
 
-### Phase 5: Skills (depends on T6, T7, T9, T10, T11, T14)
+#### Scenarios that must pass
 
-| Task | Scope | Files | Est. Lines |
-|------|-------|-------|-----------|
-| **T22: Classification skill** | `classify_signal`, `flag_for_review` (uses RAG for suggestions) | `skills/classify.py` | ~100 |
-| **T23: Research + synthesis skills** | `search_vault` (vector), `create_artifact` (with confidence) | `skills/research.py`, `synthesize.py` | ~150 |
-| **T24: Publish + notify skills** | `publish_artifact`, `notify_discord` | `skills/publish.py`, `notify.py` | ~80 |
-| **T25: Gate tools** | `ask_clarification`, `pause_for_review`, `report_blocked` | `skills/gates.py` | ~60 |
-| **T26: Promotion skills** | `promote_to_vault`, `archive_signal`, `discover_relationships`, `surface_contradiction`, `surface_connection` | `skills/promote.py` | ~150 |
+| ID | Scenario | Type |
+|----|----------|------|
+| SC-CAP-001 | Silent single capture via Discord | Automated |
+| SC-CAP-002 | Silent burst capture (5 signals in 30s) | Automated |
+| SC-CAP-003 | Capture stores before processing | Automated |
+| SC-CAP-004 | Unknown author rejected | Automated |
+| SC-TRU-001 | Owner authenticated and accepted | Automated |
+| SC-TRU-002 | Non-owner rejected | Automated |
+| SC-OBS-001 | Langfuse trace created (capture path) | Automated |
 
-### Phase 6: Recipes (depends on T12, T13, T22-T26)
+**Exit gate:** 7 scenarios passing. Bot running in Discord test server. Signals appearing in Neon Postgres.
 
-| Task | Scope | Files | Est. Lines |
-|------|-------|-------|-----------|
-| **T27: Recipe 1 — Capture & Classify** | System prompt, tool set, heartbeat trigger | `recipes/capture.py`, `scheduler/heartbeat.py` | ~120 |
-| **T28: Recipe 2 — Consult CTO** | System prompt, tool set, clarify/synthesize flow | `recipes/consult.py` | ~100 |
-| **T29: Recipe 3 — Memory Promotion** | System prompt, tool set, relationship discovery, long-cadence trigger | `recipes/promotion.py` | ~100 |
+---
 
-### Phase 7: Integration + Deploy (depends on all above)
+### Phase 2: Vault + Heartbeat Classification
 
-| Task | Scope | Files | Est. Lines |
-|------|-------|-------|-----------|
-| **T30: Python main** | Discord bot + scheduler + internal API startup, observability init | `chronos/main.py` | ~80 |
-| **T31: Vercel config** | `vercel.json` cron, env vars, build config | `web/vercel.json` | ~20 |
-| **T32: Railway deploy** | Dockerfile, env vars, deploy config | `engine/Dockerfile`, Railway config | ~30 |
+**Goal:** Vault seeded with radars + signals. Heartbeat classifies unclassified signals. High-confidence auto-classified. Low-confidence flagged. All decisions audit-logged.
 
-### Phase 8: Tests (depends on relevant phases)
+#### What gets built
 
-| Task | Scope | Scenarios |
-|------|-------|-----------|
-| **T33: Capture + classify tests** | SC-CAP-*, SC-CLS-* | 9 |
-| **T34: Consult tests** | SC-CON-*, SC-GAT-*, SC-CNF-* | 14 |
-| **T35: Promotion tests** | SC-MEM-* | 4 |
-| **T36: Review + session + channel tests** | SC-REV-*, SC-SES-*, SC-CHN-* | 14 |
-| **T37: Trust + audit + integration tests** | SC-TRU-*, SC-AUD-*, SC-PHX-*, SC-OBS-*, SC-DOM-* | 13 |
+| # | Scope | Key Files |
+|---|-------|-----------|
+| 2.1 | DB schema: `vault_signals`, `audit_log`, `recipe_runs` tables | `db/migrations/` |
+| 2.2 | CTO seed data: 7 radars + 10-15 signals as markdown files | `vault/radars/*.md`, `vault/signals/**/*.md` |
+| 2.3 | Vault seed script: read markdown → embed → upsert to Postgres | `scripts/seed.py` |
+| 2.4 | Vault reader + vector search (RAG) | `memory/vault.py` |
+| 2.5 | Domain cartridge loader: embed query → vector search → keyword boost → token budget | `engine/cartridge.py` |
+| 2.6 | Audit log: append-only write + query with filters | `memory/audit_log.py` |
+| 2.7 | Agent loop + gate detection: `tool_runner` wrapper, state persistence | `engine/agent_loop.py`, `gates.py` |
+| 2.8 | Recipe loader | `engine/recipe_loader.py` |
+| 2.9 | Classification skill: `classify_signal`, `flag_for_review`, `complete_batch` | `skills/classify.py` |
+| 2.10 | Recipe 1: Capture & Classify prompt + tool set | `recipes/capture.py` |
+| 2.11 | Heartbeat scheduler: 30-min trigger | `scheduler/heartbeat.py` |
+| 2.12 | Tests for this phase | `tests/test_classify.py`, `tests/test_audit.py` |
 
-### Task DAG
+#### Scenarios that must pass
 
-```
-T0a-T0h (manual prerequisites)
-    │
-T1  T2  T3  T4  T5          ← Phase 1 (parallel)
-│   │   │   │   │
-├───┼───┼───┼───┤
-│               │
-T6  T7  T8  T9  T10  T11    ← Phase 2 (parallel)
-│   │   │   │   │     │
-├───┼───┼───┼───┼─────┤
-│                     │
-T12  T13  T14  T15           ← Phase 3 (parallel)
-│    │    │    │
-├────┼────┼────┤
-│              │
-T16 T17 T18 T19 T20 T21     ← Phase 4 (parallel)
-│                    │
-T22 T23 T24 T25 T26          ← Phase 5 (parallel)
-│               │
-├───────────────┤
-│               │
-T27  T28  T29                ← Phase 6 (parallel)
-│    │    │
-├────┼────┤
-│
-T30  T31  T32                ← Phase 7 (parallel)
-│
-T33 T34 T35 T36 T37          ← Phase 8 (parallel test suites)
-```
+| ID | Scenario | Type |
+|----|----------|------|
+| SC-CLS-001 | Heartbeat classifies unclassified signals | Automated |
+| SC-CLS-002 | High-confidence classification stored automatically | Automated |
+| SC-CLS-003 | Low-confidence surfaces for review (flag created) | Hybrid |
+| SC-CLS-004 | Domain cartridge loaded before classification (Langfuse trace) | Automated |
+| SC-CLS-005 | Audit trail records all classification decisions | Automated |
+| SC-AUD-001 | Classification decisions logged with all fields | Automated |
+| SC-DOM-001 | CTO cartridge loads appropriate signals | Hybrid |
+| SC-PHX-002 | Recipe chain visible in Langfuse (not collapsed) | Automated |
 
-**Total: 37 tasks (8 prereqs + 29 implementation), 8 phases, ~4000 lines across Python + TypeScript**
+**Exit gate:** 8 scenarios passing. Heartbeat running. Signals being classified. Audit log populated.
+
+---
+
+### Phase 3: Capture Review (Web + Discord Notification)
+
+**Goal:** Owner can review low-confidence classifications on the web. Reclassify, reject, or approve. Actions feed back into the processing loop. Discord notifies when items need review.
+
+#### What gets built
+
+| # | Scope | Key Files |
+|---|-------|-----------|
+| 3.1 | DB schema: add any missing review-related columns | `db/migrations/` |
+| 3.2 | Web: review queue page (`/review`) — list review-pending signals | `web/src/app/review/page.tsx` |
+| 3.3 | Web: single review item page (`/review/[id]`) — actions: reclassify, reject, approve | `web/src/app/review/[id]/page.tsx` |
+| 3.4 | Web: token authentication for owner access | `web/src/lib/auth.ts` |
+| 3.5 | Engine internal API: review action endpoint | `api/routes.py` |
+| 3.6 | Notify skill: send Discord notification with web link | `skills/notify.py` |
+| 3.7 | Output router: low-confidence → web + Discord pointer | `channels/router.py` |
+| 3.8 | Wire: heartbeat → low-confidence → notify + review queue | Integration wiring |
+| 3.9 | Tests for this phase | `tests/test_review.py`, `tests/test_channels.py` |
+
+#### Scenarios that must pass
+
+| ID | Scenario | Type |
+|----|----------|------|
+| SC-REV-001 | Capture review — reclassify a signal | Automated |
+| SC-REV-002 | Capture review — reject a signal | Automated |
+| SC-REV-005 | Reviewed items re-enter processing loop | Automated |
+| SC-CHN-003 | Web artifact is token-authenticated | Automated |
+| SC-CHN-004 | Low-confidence review notification goes to Discord | Automated |
+| SC-TRU-003 | Web channel enforces token authentication | Automated |
+
+**Exit gate:** 6 scenarios passing. Full capture loop working: Discord → store → heartbeat → classify → review → reclassify → next heartbeat respects correction.
+
+---
+
+### Phase 4: Consult CTO — Clarify + Synthesize
+
+**Goal:** Owner asks `/ask` on Discord → Chronos clarifies or synthesizes → produces artifact with confidence + citations → publishes to web → notifies Discord. No intermediate chatter.
+
+#### What gets built
+
+| # | Scope | Key Files |
+|---|-------|-----------|
+| 4.1 | DB schema: `sessions`, `artifacts` tables | `db/migrations/` |
+| 4.2 | Session manager: create, load, clear, list + STM persistence | `sessions/manager.py`, `memory/stm.py` |
+| 4.3 | Discord `/session` slash command | `channels/discord_adapter.py` update |
+| 4.4 | Discord `/ask` slash command → starts consult recipe | `channels/discord_adapter.py` update |
+| 4.5 | Gateway: intent detection (capture vs retrieve/synthesize) | `channels/gateway.py` update |
+| 4.6 | Gate tools: `ask_clarification`, `pause_for_review`, `report_blocked` | `skills/gates.py` |
+| 4.7 | Research skill: `search_vault` (vector search) | `skills/research.py` |
+| 4.8 | Synthesis skill: `create_artifact` with confidence + citations + training labels | `skills/synthesize.py` |
+| 4.9 | Render + publish: structured → HTML, publish to web, generate token URL | `skills/publish.py` |
+| 4.10 | Artifact store: CRUD + token generation | `memory/artifacts.py` |
+| 4.11 | Recipe 2: Consult CTO prompt + tool set + gate conditions | `recipes/consult.py` |
+| 4.12 | Resume handler: pick up paused recipe when owner responds | `engine/resume.py` |
+| 4.13 | Web: artifact page (`/artifacts/[id]`) with confidence badge, citations, training labels | `web/src/app/artifacts/` |
+| 4.14 | Output router: clarification → inline Discord, synthesis → web + pointer | `channels/router.py` update |
+| 4.15 | Tests for this phase | `tests/test_consult.py`, `tests/test_gates.py`, `tests/test_confidence.py`, `tests/test_sessions.py` |
+
+#### Scenarios that must pass
+
+| ID | Scenario | Type |
+|----|----------|------|
+| SC-CON-001 | Consult initializes STM with domain cartridge | Automated |
+| SC-CON-002 | Clarification for underspecified request | Hybrid |
+| SC-CON-003 | Synthesis with confidence scores and source citations | Hybrid |
+| SC-CON-004 | Consult produces no intermediate chatter | Automated |
+| SC-CON-005 | Consult artifact awaits review (human pause) | Automated |
+| SC-CON-007 | Retrieve intent returns existing vault knowledge | Hybrid |
+| SC-GAT-001 | Clarification gate produces grounded questions | Hybrid |
+| SC-GAT-002 | Blocked gate explains what is needed | Hybrid |
+| SC-GAT-003 | Error gate provides recovery path | Automated |
+| SC-GAT-004 | Synthesis gate delivers complete artifact | Hybrid |
+| SC-CNF-001 | Synthesis output carries confidence score | Hybrid |
+| SC-CNF-002 | Low-confidence output indicates what would increase confidence | Hybrid |
+| SC-CNF-003 | Training-sourced knowledge explicitly labeled | Hybrid |
+| SC-SES-001 | Create a new session via Discord | Automated |
+| SC-SES-002 | Load an existing session | Hybrid |
+| SC-SES-003 | Clear current session | Automated |
+| SC-SES-004 | List sessions via Discord | Automated |
+| SC-CHN-001 | Short response stays in Discord | Automated |
+| SC-CHN-002 | Rich artifact routes to web with Discord pointer | Hybrid |
+| SC-AUD-002 | Synthesis decisions logged | Automated |
+
+**Exit gate:** 20 scenarios passing. Full consult loop: ask → clarify → synthesize → artifact on web → Discord pointer. Sessions working.
+
+---
+
+### Phase 5: Consult Review + Revision
+
+**Goal:** Owner reviews consult artifact on web → approves or gives feedback → feedback triggers in-place revision → audit trail records everything.
+
+#### What gets built
+
+| # | Scope | Key Files |
+|---|-------|-----------|
+| 5.1 | Web: consult review surface — artifact display + feedback form + approve button | `web/src/app/review/` update |
+| 5.2 | Engine API: feedback endpoint → triggers resume_recipe | `api/routes.py` update |
+| 5.3 | Revise artifact skill: update in-place (same ID) | `skills/synthesize.py` update |
+| 5.4 | Audit log: record feedback, changes made | `memory/audit_log.py` wiring |
+| 5.5 | Tests for this phase | `tests/test_review.py` additions |
+
+#### Scenarios that must pass
+
+| ID | Scenario | Type |
+|----|----------|------|
+| SC-CON-006 | Owner feedback triggers revision | Hybrid |
+| SC-REV-003 | Consult review — provide feedback for revision | Hybrid |
+| SC-REV-004 | Consult review — approve artifact | Automated |
+| SC-AUD-003 | Owner feedback recorded in audit log | Automated |
+
+**Exit gate:** 4 scenarios passing. Full review cycle: artifact → feedback → revision → re-publish.
+
+---
+
+### Phase 6: Memory Promotion
+
+**Goal:** Monthly recipe scans accumulated signals, discovers relationships, promotes patterns to vault, surfaces contradictions and connections, notifies owner.
+
+#### What gets built
+
+| # | Scope | Key Files |
+|---|-------|-----------|
+| 6.1 | DB schema: `signal_relationships` table | `db/migrations/` |
+| 6.2 | Signal relationships: CRUD, find contradictions, find clusters | `memory/relationships.py` |
+| 6.3 | Promotion skills: `promote_to_vault`, `archive_signal`, `discover_relationships`, `surface_contradiction`, `surface_connection`, `publish_promotion_summary` | `skills/promote.py` |
+| 6.4 | Recipe 3: Memory Promotion prompt + tool set | `recipes/promotion.py` |
+| 6.5 | Long-cadence scheduler trigger | `scheduler/heartbeat.py` update |
+| 6.6 | Web: promotion review surface (approve/dismiss candidates, resolve contradictions) | `web/src/app/review/` update |
+| 6.7 | Tests for this phase | `tests/test_promotion.py` |
+
+#### Scenarios that must pass
+
+| ID | Scenario | Type |
+|----|----------|------|
+| SC-MEM-001 | Promotion identifies stable patterns | Hybrid |
+| SC-MEM-002 | Proactive synthesis surfaces novel connections | Hybrid |
+| SC-MEM-003 | Ambiguous promotion items surface for review | Hybrid |
+| SC-MEM-004 | Contradictions surfaced with dual citations | Hybrid |
+| SC-AUD-004 | Promotion decisions logged | Automated |
+
+**Exit gate:** 5 scenarios passing. Full promotion loop: signals → pattern detection → promote/archive → contradictions surfaced → owner review.
+
+---
+
+### Phase 7: Audit Viewer + Session Pages + Polish
+
+**Goal:** Web surfaces for decision audit log (filterable), session management, and observability evals. All remaining scenarios pass.
+
+#### What gets built
+
+| # | Scope | Key Files |
+|---|-------|-----------|
+| 7.1 | Web: decision audit log page (`/decisions`) with filters | `web/src/app/decisions/` |
+| 7.2 | Web: session list + detail pages (`/sessions`) | `web/src/app/sessions/` |
+| 7.3 | Audit log query API with filters | Engine API update |
+| 7.4 | Langfuse evals: confidence calibration, pattern deviation | `observability/` |
+| 7.5 | Cross-channel session: same session from different interactions | Wiring |
+| 7.6 | Tests for this phase | Remaining test files |
+
+#### Scenarios that must pass
+
+| ID | Scenario | Type |
+|----|----------|------|
+| SC-AUD-005 | Audit log is queryable with filters | Automated |
+| SC-SES-005 | Sessions are topic-based, not channel-based | Automated |
+| SC-OBS-002 | Confidence calibration eval detects miscalibration | Automated |
+| SC-PHX-001 | Signal-to-memory chain is traceable | Hybrid |
+
+**Exit gate:** 4 scenarios passing. All 54 scenarios now covered.
+
+---
+
+### Phase 8: Deploy
+
+**Goal:** System running in production. Discord bot on Railway, web on Vercel, cron firing.
+
+#### What gets built
+
+| # | Scope | Key Files |
+|---|-------|-----------|
+| 8.1 | Railway deploy: Dockerfile, env vars, health check | `engine/Dockerfile` |
+| 8.2 | Vercel deploy: `vercel.json`, cron config, env vars | `web/vercel.json` |
+| 8.3 | Vercel Cron → heartbeat trigger wiring | `web/src/app/api/heartbeat/route.ts` |
+| 8.4 | Smoke test: capture → classify → consult → review in production | Manual |
+
+**Exit gate:** System live. Owner can capture via Discord, heartbeat classifies, `/ask` produces artifacts on web.
+
+---
+
+### Phase Summary
+
+| Phase | Delivers | Scenarios Passing | Cumulative |
+|-------|----------|-------------------|-----------|
+| 0 | Infrastructure accounts + credentials | — | 0 |
+| 1 | Silent capture + trust | 7 | 7 |
+| 2 | Vault + heartbeat classification | 8 | 15 |
+| 3 | Capture review (web + notification) | 6 | 21 |
+| 4 | Consult CTO (clarify + synthesize + sessions) | 20 | 41 |
+| 5 | Consult review + revision | 4 | 45 |
+| 6 | Memory promotion | 5 | 50 |
+| 7 | Audit viewer + session pages + evals | 4 | 54 |
+| 8 | Production deploy | smoke test | 54 |
+
+**Total: 9 phases, 54 scenarios, each phase testable independently**
