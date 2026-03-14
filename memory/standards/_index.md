@@ -9,12 +9,13 @@ Agents and skills query this category when they need to know: **"What are the ru
 | Path | Description | Consumers |
 |------|-------------|-----------|
 | `coding/python-engine.md` | Python engine conventions: async patterns, Anthropic SDK usage, @beta_tool, @observe | All engine code |
-| `coding/nextjs-web.md` | Next.js conventions: App Router patterns, server components, Drizzle/Prisma usage | All web code |
-| `database/schema-rules.md` | Postgres schema conventions: naming, enums, audit log append-only, pgvector indexes | DB migrations |
+| `coding/nextjs-web.md` | Next.js conventions: App Router patterns, server components, Drizzle usage | All web code |
+| `database/schema-rules.md` | Postgres schema conventions: naming, enums, audit log append-only, pgvector indexes | DB schema |
 | `testing/scenario-mapping.md` | Every feature maps to SC-* scenario IDs, test structure mirrors scenario groups | All tests |
 | `skills/tool-contract.md` | @beta_tool function contract: audit logging, structured return, error handling via ToolError | All skills |
 | `recipes/prompt-standards.md` | Recipe prompt requirements: gate tool inclusion, grounding instructions, no intermediate output | All recipes |
 | `security/trust-model.md` | Owner-only auth, token-authenticated URLs, engine API shared secret | Auth code |
+| `api/engine-api-contract.md` | Headless REST API contract between Python engine and Next.js web | Engine API, web client |
 
 ## When to Add Here
 

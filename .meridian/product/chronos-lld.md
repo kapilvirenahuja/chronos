@@ -50,7 +50,7 @@ Both share **Neon Postgres** (with pgvector) as the system of record. The Python
 | LLM Cognition | `anthropic` SDK | Native `tool_runner` with compaction, `@beta_tool` |
 | Observability | Langfuse Python SDK v3 | `AnthropicInstrumentor` for zero-code tracing |
 | Discord | discord.py 2.x | Slash commands via `app_commands`, persistent WebSocket |
-| Embeddings | `voyage-3` (via Anthropic) or `text-embedding-3-small` (OpenAI) | Signal and query embedding for RAG |
+| Embeddings | voyage-3 (VoyageAI — Anthropic ecosystem) | Signal and query embedding for RAG (1024 dim) |
 | Task Scheduling | APScheduler | 30-min heartbeat, long-cadence promotion |
 | HTTP Server | FastAPI (internal API only) | Engine API for Next.js to call |
 
@@ -60,7 +60,7 @@ Both share **Neon Postgres** (with pgvector) as the system of record. The Python
 |-----------|-----------|-----------|
 | Framework | Next.js 15 (App Router) | Server components, API routes, Vercel-native |
 | Styling | Tailwind CSS | Fast UI development |
-| Database Client | Drizzle ORM or Prisma | TypeScript-native Postgres access |
+| Database Client | Drizzle ORM | TypeScript-native Postgres access |
 | Hosting | Vercel | Zero-config Next.js deployment |
 | Cron | Vercel Cron | Triggers heartbeat endpoint on Python engine |
 
@@ -399,8 +399,7 @@ EMBEDDING_MODEL = "voyage-3"
 EMBEDDING_DIM = 1024
 
 async def embed_text(text: str) -> list[float]:
-    """Embed text using voyage-3 via Anthropic's embedding endpoint."""
-    # If using voyage-3 via VoyageAI:
+    """Embed text using voyage-3 via VoyageAI API."""
     async with httpx.AsyncClient() as client:
         response = await client.post(
             "https://api.voyageai.com/v1/embeddings",

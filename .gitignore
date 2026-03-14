@@ -1,9 +1,39 @@
-# Short-term memory (ephemeral session data)
-.phoenix-os/stm/
+# Environment
+.env
+.env.local
+.env.*.local
 
-# Long-term memory vault (user's private knowledge - ignore contents, not directory)
-memory/vault/*
+# Python engine
+engine/__pycache__/
+engine/**/__pycache__/
+engine/*.egg-info/
+engine/.venv/
+engine/dist/
+engine/.pytest_cache/
+*.pyc
+*.pyo
 
-# Exception: track vault sync metadata (no IP, just status)
-!memory/vault/vault-sync.md
-!memory/vault/IMPORT_STATUS.md
+# Next.js web
+web/.next/
+web/node_modules/
+web/out/
+
+# Vercel
+web/.vercel/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Ephemeral runtime
+.phoenix-os/
+
+# Meridian STM (issue-centric, ephemeral)
+.meridian/project/issues/
