@@ -3,35 +3,97 @@
 > Implementation blueprint derived from the product spec (v4.0.0) and technical approach (v1.1.0).
 > Each section is scoped to fit a single implementation context window.
 
-**Version:** 1.0.0
+**Version:** 2.0.0
 **Date:** 2026-03-14
-**Language:** Python 3.12+
 **Source:** chronos-features.md, technical-approach.md, chronos-scenarios.md
+
+---
+
+## Architecture Overview
+
+Chronos v1 is a split-architecture system:
+
+- **Python Engine** — long-running process: Discord bot, agent loop, heartbeat scheduler, embedding pipeline
+- **Next.js Web** — Vercel-hosted: artifact pages, review surfaces, session UI, API routes for webhooks
+
+Both share **Neon Postgres** (with pgvector) as the system of record. The Python engine exposes an internal REST API that the Next.js app calls for recipe operations (resume, review actions). The Next.js app exposes public routes for artifact viewing and webhook ingestion.
+
+```
+┌─────────────────────┐     ┌──────────────────────────┐
+│   Python Engine      │     │   Next.js Web (Vercel)   │
+│   (Railway/Fly.io)   │     │                          │
+│                      │     │  /artifacts/[id]         │
+│  Discord Bot (WS)    │◄───►│  /review                 │
+│  Agent Loop          │ API │  /api/webhooks/heartbeat │
+│  Heartbeat Scheduler │     │  /api/review/[id]/action │
+│  Embedding Pipeline  │     │  /sessions               │
+│                      │     │                          │
+└──────────┬───────────┘     └────────────┬─────────────┘
+           │                              │
+           └──────────┬───────────────────┘
+                      │
+           ┌──────────▼───────────┐
+           │  Neon Postgres       │
+           │  (pgvector enabled)  │
+           │  + Upstash Redis     │
+           └──────────────────────┘
+```
 
 ---
 
 ## Technology Decisions
 
-| Component | Technology | Version | Rationale |
-|-----------|-----------|---------|-----------|
-| LLM Cognition | `anthropic` SDK | latest | Native tool use, `tool_runner` with compaction, streaming |
-| Observability | Langfuse Python SDK v3 | latest | OTEL-based, `AnthropicInstrumentor` for zero-code tracing |
-| Database | PostgreSQL 16 | — | System of record: signals, sessions, audit log, artifacts, recipe state |
-| Queue/Cache | Redis 7 | — | Heartbeat scheduling, ephemeral runtime state |
-| Web Framework | FastAPI | latest | Async, serves web channel (artifacts, review surfaces, webhooks) |
-| Discord | discord.py 2.x | latest | Slash commands via `app_commands`, message listener |
-| WhatsApp | Meta Cloud API direct | v21.0 | No intermediary; webhook inbound, REST outbound |
-| Migrations | Alembic | latest | Postgres schema migrations |
-| Task Scheduling | APScheduler or Redis-based | — | 30-min heartbeat, long-cadence promotion trigger |
-| HTML Rendering | Jinja2 | latest | Artifact and review surface templates |
+### Python Engine
 
-### Key SDK Patterns Used
+| Component | Technology | Rationale |
+|-----------|-----------|-----------|
+| LLM Cognition | `anthropic` SDK | Native `tool_runner` with compaction, `@beta_tool` |
+| Observability | Langfuse Python SDK v3 | `AnthropicInstrumentor` for zero-code tracing |
+| Discord | discord.py 2.x | Slash commands via `app_commands`, persistent WebSocket |
+| Embeddings | `voyage-3` (via Anthropic) or `text-embedding-3-small` (OpenAI) | Signal and query embedding for RAG |
+| Task Scheduling | APScheduler | 30-min heartbeat, long-cadence promotion |
+| HTTP Server | FastAPI (internal API only) | Engine API for Next.js to call |
 
-**Agent Loop**: `client.beta.messages.tool_runner()` with compaction enabled — handles multi-turn tool use, auto-compacts when context exceeds threshold. Each recipe defines tools as `@beta_tool` decorated functions.
+### Next.js Web
 
-**Observability**: `AnthropicInstrumentor().instrument()` + `@observe` decorators on recipe/skill functions. Zero manual wrapping for Anthropic calls; workflow-level spans via decorators.
+| Component | Technology | Rationale |
+|-----------|-----------|-----------|
+| Framework | Next.js 15 (App Router) | Server components, API routes, Vercel-native |
+| Styling | Tailwind CSS | Fast UI development |
+| Database Client | Drizzle ORM or Prisma | TypeScript-native Postgres access |
+| Hosting | Vercel | Zero-config Next.js deployment |
+| Cron | Vercel Cron | Triggers heartbeat endpoint on Python engine |
 
-**Channels**: `MessageEnvelope` dataclass normalized by `DiscordAdapter` and `WhatsAppAdapter`. Each envelope carries an opaque `reply` callable for outbound.
+### Shared Infrastructure
+
+| Component | Technology | Rationale |
+|-----------|-----------|-----------|
+| Database | Neon Postgres (pgvector) | Vercel-native, vector search built in |
+| Cache/Queue | Upstash Redis | Vercel-native, serverless Redis |
+| Observability | Langfuse Cloud | Hosted, no infra to manage |
+
+### Day 1 Scope
+
+- **Discord only** — WhatsApp deferred
+- **Vercel** for web, **Railway or Fly.io** for Python engine
+- **Neon Postgres** with pgvector enabled
+- **Upstash Redis** for scheduling state
+
+---
+
+## Key SDK Patterns
+
+### Agent Loop (Python)
+
+`client.beta.messages.tool_runner()` with compaction enabled. Each recipe defines tools as `@beta_tool` decorated functions. The runner handles multi-turn tool use, auto-compacts at 100k tokens.
+
+### Observability (Python)
+
+`AnthropicInstrumentor().instrument()` + `@observe` decorators. Zero manual wrapping for Anthropic calls; workflow-level spans via decorators.
+
+### RAG (Python + Postgres)
+
+Signals are embedded on write using `voyage-3`. Queries are embedded at search time. pgvector `<=>` cosine distance operator ranks results. Radar keyword overlap boosts ranking.
 
 ---
 
@@ -39,123 +101,141 @@
 
 ```
 chronos/
-├── src/
+├── .meridian/product/              # Product docs (vision, spec, LLD, scenarios)
+├── philosophy/                     # IDD, Phoenix, PCAM foundations
+│
+├── engine/                         # Python engine (Railway/Fly.io)
 │   ├── chronos/
 │   │   ├── __init__.py
-│   │   ├── main.py                  # FastAPI app + Discord bot startup
-│   │   ├── config.py                # Environment config (pydantic-settings)
+│   │   ├── main.py                 # Discord bot + scheduler + internal API startup
+│   │   ├── config.py               # Environment config (pydantic-settings)
 │   │   │
-│   │   ├── channels/                # PCAM: Perception
-│   │   │   ├── __init__.py
-│   │   │   ├── envelope.py          # MessageEnvelope dataclass
-│   │   │   ├── discord_adapter.py   # Discord bot, slash commands, normalizer
-│   │   │   ├── whatsapp_adapter.py  # WhatsApp webhook, normalizer
-│   │   │   ├── router.py            # Output routing (inline vs web)
-│   │   │   └── gateway.py           # Inbound dispatch: envelope → trust → signal store or recipe
+│   │   ├── channels/               # PCAM: Perception
+│   │   │   ├── envelope.py         # MessageEnvelope dataclass
+│   │   │   ├── discord_adapter.py  # Discord bot, slash commands, normalizer
+│   │   │   ├── router.py           # Output routing (inline vs web)
+│   │   │   └── gateway.py          # Inbound dispatch: envelope → trust → signal store or recipe
 │   │   │
-│   │   ├── trust/                   # Cross-cutting: Trust Plane
-│   │   │   ├── __init__.py
-│   │   │   └── auth.py              # Owner verification, rejection logging
+│   │   ├── trust/
+│   │   │   └── auth.py             # Owner verification, rejection logging
 │   │   │
-│   │   ├── engine/                  # PCAM: Cognition
-│   │   │   ├── __init__.py
-│   │   │   ├── agent_loop.py        # tool_runner wrapper with state persistence + gates
-│   │   │   ├── recipe_loader.py     # Load recipe definition (prompt, tools, gates, state schema)
-│   │   │   ├── resume.py            # Resume paused recipe from Postgres state
-│   │   │   ├── gates.py             # Response gate detection and enforcement
-│   │   │   └── cartridge.py         # Domain cartridge: radar scan → vault signal matching → STM load
+│   │   ├── engine/                 # PCAM: Cognition
+│   │   │   ├── agent_loop.py       # tool_runner wrapper with state persistence + gates
+│   │   │   ├── recipe_loader.py    # Load recipe definition
+│   │   │   ├── resume.py           # Resume paused recipe
+│   │   │   ├── gates.py            # Response gate detection
+│   │   │   └── cartridge.py        # Domain cartridge: RAG + radar → STM load
 │   │   │
-│   │   ├── recipes/                 # Recipe definitions (system prompts + tool sets)
-│   │   │   ├── __init__.py
-│   │   │   ├── capture.py           # Recipe 1: capture flow + heartbeat classification
-│   │   │   ├── consult.py           # Recipe 2: consult CTO research pipeline
-│   │   │   └── promotion.py         # Recipe 3: memory promotion
+│   │   ├── recipes/                # Recipe definitions (prompts + tool sets)
+│   │   │   ├── capture.py          # Recipe 1: capture + heartbeat classification
+│   │   │   ├── consult.py          # Recipe 2: consult CTO research pipeline
+│   │   │   └── promotion.py        # Recipe 3: memory promotion
 │   │   │
-│   │   ├── skills/                  # PCAM: Agency (tools for agent loop)
-│   │   │   ├── __init__.py
-│   │   │   ├── registry.py          # Skill registry — maps skill names to @beta_tool functions
-│   │   │   ├── classify.py          # Classify signal against radars
-│   │   │   ├── research.py          # Deep research (web search, vault retrieval)
-│   │   │   ├── synthesize.py        # Synthesize findings into structured artifact
-│   │   │   ├── render.py            # Structured artifact → HTML via Jinja2
-│   │   │   ├── notify.py            # Send notification via messaging channel
-│   │   │   ├── publish.py           # Publish artifact to web channel
-│   │   │   ├── promote.py           # Promote signal store patterns to vault
-│   │   │   └── review.py            # Surface items for owner review
+│   │   ├── skills/                 # PCAM: Agency (@beta_tool functions)
+│   │   │   ├── registry.py         # Skill registry
+│   │   │   ├── classify.py         # Classify signal against radars
+│   │   │   ├── research.py         # Deep research (vector search + vault retrieval)
+│   │   │   ├── synthesize.py       # Synthesize findings into structured artifact
+│   │   │   ├── notify.py           # Send notification via Discord
+│   │   │   ├── publish.py          # Publish artifact (write to DB, generate URL)
+│   │   │   ├── promote.py          # Promote patterns to vault
+│   │   │   └── gates.py            # Gate tools (ask_clarification, pause_for_review, etc.)
 │   │   │
-│   │   ├── memory/                  # PCAM: Manifestation
-│   │   │   ├── __init__.py
-│   │   │   ├── signal_store.py      # Signal CRUD (Postgres)
-│   │   │   ├── stm.py               # Session STM (Postgres JSON)
-│   │   │   ├── vault.py             # Vault read/write (radars + signals, filesystem or Postgres)
-│   │   │   ├── audit_log.py         # Decision audit log (append-only Postgres)
-│   │   │   └── artifacts.py         # Artifact CRUD (Postgres)
+│   │   ├── memory/                 # PCAM: Manifestation
+│   │   │   ├── signal_store.py     # Signal CRUD + embedding on write
+│   │   │   ├── stm.py             # Session STM (Postgres JSON)
+│   │   │   ├── vault.py            # Vault read/write (radars + signals)
+│   │   │   ├── embeddings.py       # Embedding pipeline (voyage-3)
+│   │   │   ├── audit_log.py        # Decision audit log (append-only)
+│   │   │   └── artifacts.py        # Artifact CRUD
 │   │   │
 │   │   ├── sessions/
-│   │   │   ├── __init__.py
-│   │   │   └── manager.py           # Session CRUD, STM persistence/restore
+│   │   │   └── manager.py          # Session CRUD, STM persistence/restore
 │   │   │
-│   │   ├── web/                     # Web channel surfaces
-│   │   │   ├── __init__.py
-│   │   │   ├── routes.py            # FastAPI routes: artifacts, review, sessions
-│   │   │   ├── auth.py              # Token-authenticated URL validation
-│   │   │   └── templates/           # Jinja2 templates for HTML artifacts + review surfaces
+│   │   ├── api/                    # Internal REST API (for Next.js to call)
+│   │   │   ├── routes.py           # FastAPI routes: resume, review actions, status
+│   │   │   └── auth.py             # Internal API auth (shared secret)
 │   │   │
 │   │   ├── scheduler/
-│   │   │   ├── __init__.py
-│   │   │   └── heartbeat.py         # 30-min heartbeat trigger, long-cadence promotion trigger
+│   │   │   └── heartbeat.py        # 30-min classify, monthly promote
 │   │   │
 │   │   └── observability/
-│   │       ├── __init__.py
-│   │       └── setup.py             # Langfuse init, AnthropicInstrumentor, @observe helpers
+│   │       └── setup.py            # Langfuse init, AnthropicInstrumentor
 │   │
-│   └── tests/                       # Maps to chronos-scenarios.md groups
-│       ├── test_capture.py          # SC-CAP-*
-│       ├── test_classify.py         # SC-CLS-*
-│       ├── test_consult.py          # SC-CON-*
-│       ├── test_promotion.py        # SC-MEM-*
-│       ├── test_review.py           # SC-REV-*
-│       ├── test_sessions.py         # SC-SES-*
-│       ├── test_channels.py         # SC-CHN-*
-│       ├── test_confidence.py       # SC-CNF-*
-│       ├── test_audit.py            # SC-AUD-*
-│       ├── test_trust.py            # SC-TRU-*
-│       ├── test_gates.py            # SC-GAT-*
-│       ├── test_observability.py    # SC-OBS-*
-│       └── test_integration.py      # SC-PHX-*, SC-DOM-*
+│   ├── tests/                      # Python tests (engine, skills, recipes)
+│   ├── pyproject.toml
+│   └── Dockerfile
+│
+├── web/                            # Next.js web channel (Vercel)
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── layout.tsx
+│   │   │   ├── page.tsx
+│   │   │   ├── artifacts/[id]/page.tsx       # Artifact reading surface
+│   │   │   ├── review/page.tsx               # Review queue (capture + consult)
+│   │   │   ├── review/[id]/page.tsx          # Single review item
+│   │   │   ├── sessions/page.tsx             # Session list
+│   │   │   ├── sessions/[id]/page.tsx        # Session detail
+│   │   │   ├── decisions/page.tsx            # Decision audit log viewer
+│   │   │   └── api/
+│   │   │       ├── review/[id]/action/route.ts    # Review actions → calls engine API
+│   │   │       ├── heartbeat/route.ts             # Vercel Cron → triggers engine
+│   │   │       └── auth/route.ts                  # Token validation
+│   │   │
+│   │   ├── components/
+│   │   │   ├── artifact-viewer.tsx
+│   │   │   ├── review-card.tsx
+│   │   │   ├── confidence-badge.tsx
+│   │   │   ├── source-citation.tsx
+│   │   │   └── session-list.tsx
+│   │   │
+│   │   └── lib/
+│   │       ├── db.ts               # Drizzle/Prisma client (reads from Neon)
+│   │       ├── engine-client.ts    # HTTP client to Python engine API
+│   │       └── auth.ts             # Token verification
+│   │
+│   ├── package.json
+│   ├── next.config.ts
+│   ├── tailwind.config.ts
+│   └── vercel.json
 │
 ├── db/
-│   └── migrations/                  # Alembic migrations
+│   └── migrations/                 # Shared Postgres migrations (Drizzle or Alembic)
 │
-├── vault/                           # CTO domain cartridge seed data (filesystem)
-│   ├── radars/                      # Radar definitions (markdown with keyword sets)
-│   └── signals/                     # Seed signals by category
+├── vault/                          # CTO domain cartridge seed data
+│   ├── radars/
+│   └── signals/
 │
-├── pyproject.toml
-├── alembic.ini
 └── .env.example
 ```
 
 ---
 
-## 1. Database Schema (Postgres)
+## 1. Database Schema (Neon Postgres + pgvector)
 
-### 1.1 signals
+### 1.1 Enable pgvector
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+### 1.2 signals
 
 ```sql
 CREATE TYPE signal_status AS ENUM (
-    'unclassified', 'classified', 'review_pending', 'rejected', 'archived'
+    'unclassified', 'classified', 'review_pending', 'rejected', 'archived', 'promoted'
 );
 
 CREATE TABLE signals (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     raw_text        TEXT NOT NULL,
-    channel         VARCHAR(50) NOT NULL,        -- 'discord', 'whatsapp'
+    channel         VARCHAR(50) NOT NULL,        -- 'discord'
     author_id       VARCHAR(100) NOT NULL,
-    channel_msg_id  VARCHAR(100),                -- platform-native message ID
+    channel_msg_id  VARCHAR(100),
     status          signal_status NOT NULL DEFAULT 'unclassified',
-    radar_category  VARCHAR(100),                -- set after classification
-    confidence      FLOAT,                       -- classification confidence
+    radar_category  VARCHAR(100),
+    confidence      FLOAT,
+    embedding       vector(1024),                -- voyage-3 embeddings (1024 dim)
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     classified_at   TIMESTAMPTZ,
     reviewed_at     TIMESTAMPTZ,
@@ -164,9 +244,58 @@ CREATE TABLE signals (
 
 CREATE INDEX idx_signals_status ON signals (status);
 CREATE INDEX idx_signals_created ON signals (created_at);
+CREATE INDEX idx_signals_embedding ON signals USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 ```
 
-### 1.2 sessions
+### 1.3 vault_signals
+
+Vault signals are also stored in Postgres (not just filesystem) so they can be vector-searched alongside captured signals.
+
+```sql
+CREATE TABLE vault_signals (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    path            VARCHAR(500) NOT NULL UNIQUE,  -- 'signals/ai/augmentation-principle.md'
+    radar_category  VARCHAR(100) NOT NULL,
+    title           VARCHAR(500),
+    content         TEXT NOT NULL,
+    embedding       vector(1024),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_vault_signals_radar ON vault_signals (radar_category);
+CREATE INDEX idx_vault_signals_embedding ON vault_signals USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+```
+
+### 1.4 signal_relationships (Graph Layer)
+
+```sql
+CREATE TYPE relationship_type AS ENUM (
+    'reinforces',       -- signal A strengthens signal B
+    'contradicts',      -- signal A conflicts with signal B
+    'extends',          -- signal A builds on signal B
+    'supersedes'        -- signal A replaces signal B
+);
+
+CREATE TABLE signal_relationships (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_id       UUID NOT NULL,               -- can be signals.id or vault_signals.id
+    source_type     VARCHAR(20) NOT NULL,         -- 'signal' or 'vault_signal'
+    target_id       UUID NOT NULL,
+    target_type     VARCHAR(20) NOT NULL,
+    relationship    relationship_type NOT NULL,
+    confidence      FLOAT,
+    evidence        TEXT,                         -- why this relationship exists
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_by      VARCHAR(50) DEFAULT 'system'  -- 'system' or 'owner'
+);
+
+CREATE INDEX idx_relationships_source ON signal_relationships (source_id, source_type);
+CREATE INDEX idx_relationships_target ON signal_relationships (target_id, target_type);
+CREATE INDEX idx_relationships_type ON signal_relationships (relationship);
+```
+
+### 1.5 sessions
 
 ```sql
 CREATE TYPE session_status AS ENUM ('active', 'inactive');
@@ -175,7 +304,7 @@ CREATE TABLE sessions (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     topic           VARCHAR(500) NOT NULL,
     status          session_status NOT NULL DEFAULT 'active',
-    stm_state       JSONB DEFAULT '{}',          -- full STM snapshot
+    stm_state       JSONB DEFAULT '{}',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_active_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -184,7 +313,7 @@ CREATE INDEX idx_sessions_status ON sessions (status);
 CREATE INDEX idx_sessions_active ON sessions (last_active_at DESC);
 ```
 
-### 1.3 recipe_runs
+### 1.6 recipe_runs
 
 ```sql
 CREATE TYPE recipe_state AS ENUM (
@@ -194,10 +323,10 @@ CREATE TYPE recipe_state AS ENUM (
 
 CREATE TABLE recipe_runs (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    recipe          VARCHAR(100) NOT NULL,       -- 'capture_classify', 'consult_cto', 'promotion'
+    recipe          VARCHAR(100) NOT NULL,
     session_id      UUID REFERENCES sessions(id),
     state           recipe_state NOT NULL DEFAULT 'queued',
-    agent_state     JSONB DEFAULT '{}',          -- persisted messages + tool history for resume
+    agent_state     JSONB DEFAULT '{}',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -205,21 +334,21 @@ CREATE TABLE recipe_runs (
 CREATE INDEX idx_recipe_runs_state ON recipe_runs (state);
 ```
 
-### 1.4 artifacts
+### 1.7 artifacts
 
 ```sql
 CREATE TABLE artifacts (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     recipe_run_id   UUID REFERENCES recipe_runs(id),
     structured      JSONB NOT NULL,              -- {sections, sources, confidence, metadata}
-    html_content    TEXT,                         -- rendered HTML
-    access_token    VARCHAR(64) NOT NULL UNIQUE,  -- token for URL auth
+    html_content    TEXT,
+    access_token    VARCHAR(64) NOT NULL UNIQUE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-### 1.5 audit_log
+### 1.8 audit_log
 
 ```sql
 CREATE TABLE audit_log (
@@ -227,858 +356,699 @@ CREATE TABLE audit_log (
     timestamp       TIMESTAMPTZ NOT NULL DEFAULT now(),
     recipe          VARCHAR(100) NOT NULL,
     session_id      UUID REFERENCES sessions(id),
-    decision_type   VARCHAR(50) NOT NULL,        -- 'classification', 'synthesis', 'promotion', 'revision', 'review'
+    decision_type   VARCHAR(50) NOT NULL,
     input           JSONB NOT NULL,
     output          JSONB NOT NULL,
     confidence      FLOAT,
-    sources         JSONB DEFAULT '[]',          -- array of vault signal paths
+    sources         JSONB DEFAULT '[]',
     owner_feedback  TEXT,
     changes_made    TEXT,
-    trace_id        VARCHAR(100)                 -- Langfuse trace ID for cross-reference
+    trace_id        VARCHAR(100)
 );
 
--- Append-only: no UPDATE/DELETE grants on this table
+-- Append-only: no UPDATE/DELETE grants
 CREATE INDEX idx_audit_recipe ON audit_log (recipe);
 CREATE INDEX idx_audit_type ON audit_log (decision_type);
 CREATE INDEX idx_audit_timestamp ON audit_log (timestamp);
 CREATE INDEX idx_audit_confidence ON audit_log (confidence);
 ```
 
+### 1.9 radars
+
+```sql
+CREATE TABLE radars (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name            VARCHAR(100) NOT NULL UNIQUE,
+    keywords        TEXT[] NOT NULL,              -- keyword array for matching
+    description     TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
 ---
 
-## 2. Core Runtime: Agent Loop
+## 2. RAG: Embedding Pipeline + Vector Search
 
-The agent loop is the execution engine for all recipes. It wraps the Anthropic SDK `tool_runner` with state persistence and response gate detection.
-
-### 2.1 agent_loop.py — Key Design
+### 2.1 Embedding Pipeline (Python)
 
 ```python
-from anthropic import Anthropic, beta_tool
+from anthropic import Anthropic  # or openai for text-embedding-3-small
+import httpx
+
+EMBEDDING_MODEL = "voyage-3"
+EMBEDDING_DIM = 1024
+
+async def embed_text(text: str) -> list[float]:
+    """Embed text using voyage-3 via Anthropic's embedding endpoint."""
+    # If using voyage-3 via VoyageAI:
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://api.voyageai.com/v1/embeddings",
+            headers={"Authorization": f"Bearer {VOYAGE_API_KEY}"},
+            json={"input": [text], "model": "voyage-3"}
+        )
+        return response.json()["data"][0]["embedding"]
+
+async def embed_and_store_signal(signal_id: str, raw_text: str):
+    """Embed a signal on capture and store the vector."""
+    embedding = await embed_text(raw_text)
+    await update_signal_embedding(signal_id, embedding)
+
+async def embed_and_store_vault_signal(path: str, content: str, radar: str):
+    """Embed a vault signal and upsert to vault_signals table."""
+    embedding = await embed_text(content)
+    await upsert_vault_signal(path, content, radar, embedding)
+```
+
+### 2.2 Vector Search (Domain Cartridge Loading)
+
+```python
 from langfuse import observe
-from chronos.engine.gates import check_gates, GateResult
-from chronos.memory.audit_log import log_decision
 
-@observe(name="agent_loop")
-async def run_recipe(
-    recipe_run_id: str,
-    recipe_prompt: str,
-    tools: list,               # list of @beta_tool functions
-    messages: list,            # conversation history (restored from DB on resume)
-    gate_conditions: dict,     # gate detection rules per recipe
-    session_id: str,
-) -> GateResult:
+@observe(name="load_cartridge")
+async def load_cartridge(query: str, role: str = "cto") -> DomainCartridge:
     """
-    Execute a recipe's agent loop until a response gate is reached or tools exhausted.
-
-    Returns GateResult with gate_type and output.
-    Persists state to Postgres after each tool-use round.
+    Load domain cartridge using RAG:
+    1. Embed the query
+    2. Vector search vault_signals by cosine similarity
+    3. Boost results that match radar keywords
+    4. Cap at token budget
+    5. Load into STM
     """
-    client = Anthropic()
+    role_profile = load_role_profile(role)
 
-    runner = client.beta.messages.tool_runner(
-        model="claude-sonnet-4-20250514",        # fast model for most recipes
-        max_tokens=8192,
-        system=recipe_prompt,
-        tools=tools,
-        messages=messages,
-        compaction_control={
-            "enabled": True,
-            "context_token_threshold": 100_000,
-        },
+    # Embed query
+    query_embedding = await embed_text(query)
+
+    # Vector search with keyword boost
+    matched_signals = await vector_search_vault(
+        embedding=query_embedding,
+        limit=50,                    # fetch candidates
+        min_similarity=0.3,
     )
 
-    for response in runner:
-        # Persist conversation state after each round
-        messages.append({"role": "assistant", "content": response.content})
-        await persist_agent_state(recipe_run_id, messages)
+    # Keyword boost: signals whose radar keywords overlap with query get a score boost
+    query_words = set(query.lower().split())
+    for signal in matched_signals:
+        radar = await load_radar(signal.radar_category)
+        keyword_overlap = len(query_words & set(radar.keywords))
+        signal.combined_score = signal.similarity + (keyword_overlap * 0.1)
 
-        # Check response gates
-        gate = check_gates(response, gate_conditions)
-        if gate:
-            return gate
+    matched_signals.sort(key=lambda s: s.combined_score, reverse=True)
 
-    # If tool_runner exhausts (no more tool calls), treat as synthesis gate
-    return GateResult(gate_type="synthesis", output=response.content)
+    # Token budget
+    selected = []
+    token_count = 0
+    TOKEN_BUDGET = 50_000
+
+    for signal in matched_signals:
+        signal_tokens = estimate_tokens(signal.content)
+        if token_count + signal_tokens > TOKEN_BUDGET:
+            break
+        selected.append(signal)
+        token_count += signal_tokens
+
+    return DomainCartridge(
+        role_profile=role_profile,
+        matched_signals=selected,
+        radars_matched=list(set(s.radar_category for s in selected)),
+    )
 ```
 
-### 2.2 State Persistence for Human Pause
+### 2.3 SQL: Vector Search Query
 
-When a gate requires human input (e.g., `awaiting_review`):
+```sql
+-- Find top-K vault signals by cosine similarity to query embedding
+SELECT id, path, radar_category, title, content,
+       1 - (embedding <=> $1::vector) AS similarity
+FROM vault_signals
+WHERE 1 - (embedding <=> $1::vector) > $2  -- min_similarity threshold
+ORDER BY embedding <=> $1::vector
+LIMIT $3;
+```
+
+### 2.4 Signal Classification with RAG
+
+During heartbeat classification, signals are matched semantically against vault signals to determine radar category:
 
 ```python
-async def pause_recipe(recipe_run_id: str, state: str, notification: dict):
-    """Persist state and stop. Resume when human responds."""
-    await update_recipe_state(recipe_run_id, state)  # e.g., 'awaiting_review'
-    await send_notification(notification)              # messaging channel link
-    # Agent loop ends here. Resume handler picks up later.
-```
+async def classify_with_rag(signal_id: str, signal_text: str) -> dict:
+    """Use vector similarity to suggest radar category for a signal."""
+    signal_embedding = await embed_text(signal_text)
 
-### 2.3 Resume Handler
-
-```python
-@observe(name="resume_recipe")
-async def resume_recipe(recipe_run_id: str, human_input: dict):
-    """Resume a paused recipe with human feedback."""
-    run = await load_recipe_run(recipe_run_id)
-    messages = run.agent_state["messages"]
-
-    # Append human feedback as a user message
-    messages.append({
-        "role": "user",
-        "content": format_human_feedback(human_input)
-    })
-
-    # Log feedback to audit
-    await log_decision(
-        recipe=run.recipe,
-        session_id=run.session_id,
-        decision_type="review",
-        input=human_input,
-        output={},
-        owner_feedback=human_input.get("feedback"),
+    # Find most similar vault signals
+    similar = await vector_search_vault(
+        embedding=signal_embedding,
+        limit=5,
+        min_similarity=0.4,
     )
 
-    # Re-enter agent loop
-    recipe = load_recipe(run.recipe)
-    return await run_recipe(
-        recipe_run_id=recipe_run_id,
-        recipe_prompt=recipe.prompt,
-        tools=recipe.tools,
-        messages=messages,
-        gate_conditions=recipe.gate_conditions,
-        session_id=run.session_id,
-    )
+    if not similar:
+        return {"category": None, "confidence": 0.0}
+
+    # Most common radar category among top matches
+    categories = [s.radar_category for s in similar]
+    top_category = max(set(categories), key=categories.count)
+    confidence = categories.count(top_category) / len(categories)
+
+    return {"category": top_category, "confidence": confidence}
 ```
-
-### 2.4 Context Window Management
-
-**Problem**: Long-running recipes (consult with multiple clarification rounds) can exhaust the context window.
-
-**Solution**: `tool_runner` compaction is enabled with a 100k token threshold. When conversation history exceeds this, the SDK auto-summarizes older turns. For recipes with very long vault context, we control what goes into STM:
-
-- Domain cartridge loading selects only radar-matched signals (not entire vault)
-- STM caps at configurable token budget (default 50k tokens of vault context)
-- Each skill tool returns structured output, not verbose prose
 
 ---
 
-## 3. Response Gates
+## 3. Graph Layer: Signal Relationships
 
-### 3.1 gates.py
+The promotion recipe uses relationship queries to find patterns, contradictions, and connections.
+
+### 3.1 Create Relationship
 
 ```python
-from dataclasses import dataclass
-from typing import Optional
-
-@dataclass
-class GateResult:
-    gate_type: str          # 'clarification', 'synthesis', 'blocked', 'error'
-    output: list            # content blocks to surface to user
-    artifact_id: Optional[str] = None
-    pause_state: Optional[str] = None   # recipe state to transition to
-
-def check_gates(response, gate_conditions: dict) -> Optional[GateResult]:
-    """
-    Inspect the model response for gate signals.
-
-    Gate detection strategy:
-    - Tool call to `pause_for_review` → awaiting_review gate
-    - Tool call to `ask_clarification` → clarification gate
-    - Tool call to `report_blocked` → blocked gate
-    - No more tool calls + text output → synthesis gate
-    - Exception in tool execution → error gate
-    """
-    for block in response.content:
-        if block.type == "tool_use":
-            if block.name == "pause_for_review":
-                return GateResult("awaiting_review", response.content, pause_state="awaiting_review")
-            if block.name == "ask_clarification":
-                return GateResult("clarification", response.content)
-            if block.name == "report_blocked":
-                return GateResult("blocked", response.content)
-    return None
+async def create_relationship(
+    source_id: str, source_type: str,
+    target_id: str, target_type: str,
+    relationship: str, confidence: float, evidence: str
+):
+    """Create a relationship edge between two signals."""
+    await db.execute("""
+        INSERT INTO signal_relationships
+            (source_id, source_type, target_id, target_type, relationship, confidence, evidence)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+    """, source_id, source_type, target_id, target_type, relationship, confidence, evidence)
 ```
 
-Gate tools are special tools included in every recipe that let Claude explicitly signal gate transitions. This keeps gate detection deterministic (tool call) rather than heuristic (text parsing).
+### 3.2 Find Contradictions
+
+```sql
+-- Find all contradictions involving a given signal
+SELECT sr.*,
+    CASE WHEN sr.source_type = 'vault_signal' THEN vs.content ELSE s.raw_text END AS source_text,
+    CASE WHEN sr.target_type = 'vault_signal' THEN vs2.content ELSE s2.raw_text END AS target_text
+FROM signal_relationships sr
+LEFT JOIN vault_signals vs ON sr.source_id = vs.id AND sr.source_type = 'vault_signal'
+LEFT JOIN signals s ON sr.source_id = s.id AND sr.source_type = 'signal'
+LEFT JOIN vault_signals vs2 ON sr.target_id = vs2.id AND sr.target_type = 'vault_signal'
+LEFT JOIN signals s2 ON sr.target_id = s2.id AND sr.target_type = 'signal'
+WHERE sr.relationship = 'contradicts'
+ORDER BY sr.confidence DESC;
+```
+
+### 3.3 Find Reinforcing Clusters (Promotion Candidates)
+
+```sql
+-- Find signals that reinforce each other (cluster detection)
+SELECT s.radar_category, COUNT(*) AS cluster_size,
+    array_agg(s.id) AS signal_ids
+FROM signal_relationships sr
+JOIN signals s ON sr.source_id = s.id AND sr.source_type = 'signal'
+WHERE sr.relationship = 'reinforces'
+    AND s.status = 'classified'
+GROUP BY s.radar_category
+HAVING COUNT(*) >= 3  -- minimum cluster size for promotion consideration
+ORDER BY cluster_size DESC;
+```
+
+### 3.4 Relationship Discovery (Promotion Recipe Skill)
+
+The promotion recipe uses Claude to discover relationships between signals:
+
+```python
+@beta_tool
+async def discover_relationships(signal_ids: list[str]) -> str:
+    """Analyze a batch of signals to discover relationships between them.
+
+    Args:
+        signal_ids: List of signal UUIDs to analyze for relationships
+    """
+    signals = await load_signals(signal_ids)
+
+    # Use vector similarity to find potentially related vault signals
+    for signal in signals:
+        similar_vault = await vector_search_vault(
+            embedding=signal.embedding,
+            limit=5,
+            min_similarity=0.5,
+        )
+        for vault_signal in similar_vault:
+            # Claude determines relationship type as part of the agent loop
+            # This tool just surfaces the candidates
+            pass
+
+    return f"Found {len(signals)} signals for relationship analysis"
+```
 
 ---
 
-## 4. Channel Gateway
+## 4. Core Runtime: Agent Loop (Python)
 
-### 4.1 envelope.py
+Unchanged from v1.0 — `tool_runner` wrapper with state persistence and gate detection. See §2 of previous LLD version for full code. Key addition:
+
+### 4.1 Context Window Management (Updated)
+
+- `tool_runner` compaction at 100k tokens
+- Domain cartridge loading uses RAG (vector search) — only semantically relevant signals loaded
+- STM token budget: 50k for vault context
+- Signal embeddings stored in Postgres, not recomputed per query
+
+---
+
+## 5. Response Gates
+
+Unchanged. Gate tools (`ask_clarification`, `pause_for_review`, `report_blocked`) trigger deterministic gate detection. See §3 of previous version.
+
+---
+
+## 6. Channel Gateway (Python — Discord Only Day 1)
+
+### 6.1 MessageEnvelope
 
 ```python
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Callable, Awaitable, Optional
-
 @dataclass
 class MessageEnvelope:
-    channel: str                              # "discord" | "whatsapp"
+    channel: str                              # "discord"
     channel_message_id: str
     sender_id: str
     chat_id: str
     text: str
     timestamp: datetime
-    reply: Callable[[str], Awaitable[None]]   # outbound callable
+    reply: Callable[[str], Awaitable[None]]
     meta: dict = field(default_factory=dict)
-    command: Optional[str] = None             # parsed slash command name
-    command_args: Optional[dict] = None       # parsed command arguments
+    command: Optional[str] = None
+    command_args: Optional[dict] = None
 ```
 
-### 4.2 gateway.py — Inbound Dispatch
+### 6.2 Discord Adapter
 
 ```python
-from chronos.trust.auth import verify_owner
-from chronos.memory.signal_store import store_signal
-from chronos.sessions.manager import route_session_command
-from chronos.engine.agent_loop import run_recipe
+import discord
+from discord import app_commands
+from discord.ext import commands
 
+intents = discord.Intents.default()
+intents.message_content = True
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+@bot.tree.command(name="session", description="Manage sessions")
+@app_commands.describe(action="new|load|clear|list", topic="Session topic (for new)")
+async def session_cmd(interaction: discord.Interaction, action: str, topic: str = ""):
+    await interaction.response.defer()
+    envelope = normalize_discord_interaction(interaction, action, topic)
+    result = await route_session_command(envelope)
+    await interaction.followup.send(result)
+
+@bot.tree.command(name="ask", description="Ask Chronos a strategic question")
+@app_commands.describe(question="Your question")
+async def ask_cmd(interaction: discord.Interaction, question: str):
+    await interaction.response.defer()
+    envelope = normalize_discord_interaction(interaction, question=question)
+    await start_consult(envelope)
+
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author.bot:
+        return
+    envelope = normalize_discord_message(message)
+    await handle_inbound(envelope)
+    await bot.process_commands(message)
+```
+
+### 6.3 Gateway — Inbound Dispatch
+
+```python
 async def handle_inbound(envelope: MessageEnvelope):
-    """Central dispatch for all inbound messages."""
-
     # 1. Trust check
     if not verify_owner(envelope.sender_id):
         await log_rejection(envelope)
-        return  # silent rejection
-
-    # 2. Session commands
-    if envelope.command and envelope.command.startswith("session"):
-        await route_session_command(envelope)
         return
 
-    # 3. Intent detection: is this a capture or a consult?
+    # 2. Intent detection: capture or consult?
     intent = detect_intent(envelope.text)
 
     if intent == "capture":
-        # Store silently, no response
-        await store_signal(
-            raw_text=envelope.text,
-            channel=envelope.channel,
-            author_id=envelope.sender_id,
-            channel_msg_id=envelope.channel_message_id,
-        )
+        await store_signal(envelope)     # store + embed, silent
         return
 
     if intent in ("retrieve", "synthesize"):
-        # Start or continue consult recipe
         await start_consult(envelope)
         return
 ```
 
-### 4.3 Output Router
+---
 
-```python
-from chronos.channels.envelope import MessageEnvelope
+## 7. Web Channel (Next.js on Vercel)
 
-async def route_output(
-    envelope: MessageEnvelope,
-    gate_result,
-    artifact_id: str = None,
-):
-    """Route recipe output to appropriate channel."""
+### 7.1 Key Pages
 
-    if gate_result.gate_type == "clarification":
-        # Short enough for inline messaging
-        text = format_clarification(gate_result.output)
-        await envelope.reply(text)
+| Route | Purpose | Data Source |
+|-------|---------|-------------|
+| `/artifacts/[id]?token=xxx` | Read a synthesis artifact | Direct DB read (Neon) |
+| `/review` | Review queue (capture + consult items) | Direct DB read |
+| `/review/[id]` | Single review item with actions | DB read + engine API call on action |
+| `/sessions` | Session list | Direct DB read |
+| `/sessions/[id]` | Session detail + STM state | Direct DB read |
+| `/decisions` | Decision audit log viewer with filters | Direct DB read |
 
-    elif gate_result.gate_type in ("synthesis", "awaiting_review"):
-        # Rich artifact → web channel + messaging pointer
-        url = generate_artifact_url(artifact_id)
-        await envelope.reply(f"Your brief is ready: {url}")
+### 7.2 API Routes
 
-    elif gate_result.gate_type == "blocked":
-        text = format_blocked(gate_result.output)
-        await envelope.reply(text)
+```typescript
+// app/api/review/[id]/action/route.ts
+import { NextRequest, NextResponse } from 'next/server'
 
-    elif gate_result.gate_type == "error":
-        await envelope.reply("Something went wrong. Please try again or rephrase your request.")
+export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const { token, action, feedback } = await req.json()
+
+  if (!verifyOwnerToken(token)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  }
+
+  // Call Python engine API to execute the action
+  const engineResponse = await fetch(`${ENGINE_API_URL}/review/${params.id}/action`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${ENGINE_API_SECRET}`,
+    },
+    body: JSON.stringify({ action, feedback }),
+  })
+
+  return NextResponse.json(await engineResponse.json())
+}
+```
+
+### 7.3 Artifact Viewer Component
+
+```tsx
+// components/artifact-viewer.tsx
+export function ArtifactViewer({ artifact }: { artifact: Artifact }) {
+  return (
+    <article className="max-w-3xl mx-auto">
+      <h1>{artifact.structured.title}</h1>
+      <ConfidenceBadge score={artifact.structured.confidence} />
+
+      {artifact.structured.sections.map(section => (
+        <section key={section.heading}>
+          <h2>{section.heading}</h2>
+          <div>{section.content}</div>
+        </section>
+      ))}
+
+      <h3>Sources</h3>
+      {artifact.structured.sources.map(source => (
+        <SourceCitation key={source.signal_path} {...source} />
+      ))}
+
+      {artifact.structured.training_sourced?.length > 0 && (
+        <div className="border-l-4 border-yellow-400 pl-4">
+          <h4>Training-Sourced (not from your knowledge)</h4>
+          {artifact.structured.training_sourced.map(claim => (
+            <p key={claim}>{claim}</p>
+          ))}
+        </div>
+      )}
+
+      {artifact.structured.confidence_gaps?.length > 0 && (
+        <div>
+          <h4>What would increase confidence</h4>
+          <ul>{artifact.structured.confidence_gaps.map(g => <li key={g}>{g}</li>)}</ul>
+        </div>
+      )}
+    </article>
+  )
+}
 ```
 
 ---
 
-## 5. Domain Cartridge Loader
+## 8. Python Engine Internal API
 
-### 5.1 cartridge.py
+The Python engine exposes a small FastAPI app for the Next.js web to call:
 
 ```python
-from dataclasses import dataclass
-from chronos.memory.vault import load_radars, load_signals_by_radar
-from langfuse import observe
+# api/routes.py
+from fastapi import FastAPI, HTTPException, Header
 
-@dataclass
-class DomainCartridge:
-    role_profile: dict          # persona definition, output framing, domain vocabulary
-    matched_signals: list       # list of {path, content, radar, relevance_score}
-    radars_matched: list        # which radars fired
+app = FastAPI()
 
-@observe(name="load_cartridge")
-async def load_cartridge(query: str, role: str = "cto") -> DomainCartridge:
-    """
-    Load domain cartridge by scanning query against radars
-    and selecting matched vault signals.
+async def verify_engine_secret(authorization: str = Header()):
+    if authorization != f"Bearer {ENGINE_API_SECRET}":
+        raise HTTPException(status_code=403)
 
-    Token budget: caps matched signals at ~50k tokens to leave room
-    for recipe prompt and conversation history.
-    """
-    role_profile = load_role_profile(role)
-    radars = await load_radars()
+@app.post("/review/{item_id}/action", dependencies=[Depends(verify_engine_secret)])
+async def review_action(item_id: str, body: ReviewActionBody):
+    if body.action == "reclassify":
+        await reclassify_signal(item_id, body.new_category)
+    elif body.action == "reject":
+        await reject_signal(item_id)
+    elif body.action == "approve":
+        await approve_artifact(item_id)
+    elif body.action == "feedback":
+        await resume_recipe(item_id, {"feedback": body.text})
+    return {"status": "ok"}
 
-    # Scan query keywords against radar keyword sets
-    matched_radars = []
-    for radar in radars:
-        score = keyword_match(query, radar.keywords)
-        if score > 0.3:  # threshold
-            matched_radars.append((radar, score))
+@app.post("/heartbeat/trigger", dependencies=[Depends(verify_engine_secret)])
+async def trigger_heartbeat():
+    """Vercel Cron calls this to trigger classification heartbeat."""
+    await heartbeat_classify()
+    return {"status": "ok"}
 
-    matched_radars.sort(key=lambda x: x[1], reverse=True)
-
-    # Load signals from matched radars, respecting token budget
-    signals = []
-    token_count = 0
-    TOKEN_BUDGET = 50_000
-
-    for radar, score in matched_radars:
-        radar_signals = await load_signals_by_radar(radar.name)
-        for signal in radar_signals:
-            signal_tokens = estimate_tokens(signal.content)
-            if token_count + signal_tokens > TOKEN_BUDGET:
-                break
-            signals.append({
-                "path": signal.path,
-                "content": signal.content,
-                "radar": radar.name,
-                "relevance_score": score,
-            })
-            token_count += signal_tokens
-
-    return DomainCartridge(
-        role_profile=role_profile,
-        matched_signals=signals,
-        radars_matched=[r.name for r, _ in matched_radars],
-    )
+@app.get("/status")
+async def health():
+    return {"status": "healthy"}
 ```
 
-### 5.2 Vault Structure (Filesystem)
+---
 
-```
-vault/
-├── radars/
-│   ├── ai-intelligence.md         # keywords: [ai, agents, llm, ...]
-│   ├── technology.md              # keywords: [architecture, microservices, ...]
-│   ├── leadership.md              # keywords: [team, culture, hiring, ...]
-│   ├── innovation.md              # keywords: [disruption, moats, ...]
-│   ├── evolutionary-architecture.md
-│   ├── product.md
-│   └── strategy.md
-└── signals/
-    ├── ai/
-    │   ├── augmentation-principle.md
-    │   └── intent-alignment.md
-    ├── technology/
-    │   ├── composable-architecture.md
-    │   └── service-mesh-patterns.md
-    └── leadership/
-        ├── team-autonomy.md
-        └── strategic-radars.md
-```
+## 9. Recipe Definitions (Python)
 
-Each radar file has a frontmatter with keywords:
+Unchanged from v1.0. System prompts, tool sets, and gate conditions as defined in §6 of the previous version. Key update: the `search_vault` skill now uses vector search instead of keyword-only.
+
+---
+
+## 10. Vault Seed Data Structure
+
+### 10.1 Radars (Postgres + filesystem mirror)
+
+Each radar is defined both in the `radars` table and as a markdown file:
 
 ```markdown
 ---
 name: ai-intelligence
-keywords: [ai, agents, llm, machine learning, augmentation, intelligence, neural, transformer]
-signals_path: signals/ai/
+keywords: [ai, agents, llm, machine learning, augmentation, intelligence, neural, transformer, reasoning, prompt]
 ---
+
+# AI & Intelligence
+
+Covers artificial intelligence strategy, agent architectures, LLM capabilities,
+augmentation principles, and AI-native product patterns.
 ```
 
+### 10.2 Signals (Postgres + filesystem mirror)
+
+Each signal is a markdown file AND a row in `vault_signals` with embedding:
+
+```markdown
+---
+title: The Augmentation Principle
+radar: ai-intelligence
 ---
 
-## 6. Recipe Definitions
+AI should augment human capabilities, not replace human judgment.
+The augmentation principle states that...
+```
 
-Each recipe is a Python module that defines: system prompt, tool set, gate conditions, and state schema.
+### 10.3 Seed Script
 
-### 6.1 Recipe 1: Capture & Classify
+A Python script reads `vault/radars/*.md` and `vault/signals/**/*.md`, embeds each, and upserts to Postgres. Run once on setup, then whenever vault files change.
 
-```python
-# recipes/capture.py
+---
 
-HEARTBEAT_PROMPT = """
-You are the Chronos classification engine. Your job is to classify unclassified signals
-using the domain cartridge provided in the context.
+## 11. Deployment
 
-For each signal:
-1. Read the signal text
-2. Match it against the radar categories in the cartridge
-3. Assign a radar category and confidence score (0.0-1.0)
-4. If confidence < 0.7, use the `flag_for_review` tool instead of `store_classification`
+### 11.1 Topology
 
-You must classify ALL provided signals. Do not skip any.
-After classifying all signals, use the `complete_batch` tool.
-"""
+| Service | Platform | Why |
+|---------|----------|-----|
+| Next.js Web | Vercel | Native Next.js hosting, edge functions, cron |
+| Python Engine | Railway | Persistent process for Discord bot + scheduler |
+| Postgres | Neon (via Vercel) | pgvector, serverless, Vercel-native integration |
+| Redis | Upstash (via Vercel) | Serverless Redis, Vercel-native |
+| Observability | Langfuse Cloud | Managed, no infra |
 
-TOOLS = [classify_signal, flag_for_review, store_classification, complete_batch]
+### 11.2 Environment Variables
 
-GATE_CONDITIONS = {
-    "complete_batch": "synthesis",  # batch done → exit
+**Python Engine (Railway):**
+```
+ANTHROPIC_API_KEY=sk-ant-...
+VOYAGE_API_KEY=pa-...
+DISCORD_BOT_TOKEN=...
+DISCORD_GUILD_ID=...
+OWNER_DISCORD_ID=...
+DATABASE_URL=postgres://...@neon.tech/chronos
+REDIS_URL=redis://...@upstash.io:6379
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+ENGINE_API_SECRET=shared-secret-for-next-to-call
+WEB_BASE_URL=https://chronos.vercel.app
+```
+
+**Next.js Web (Vercel):**
+```
+DATABASE_URL=postgres://...@neon.tech/chronos
+ENGINE_API_URL=https://chronos-engine.railway.app
+ENGINE_API_SECRET=shared-secret-for-next-to-call
+OWNER_TOKEN_SECRET=jwt-signing-secret
+```
+
+### 11.3 Vercel Cron
+
+```json
+// vercel.json
+{
+  "crons": [
+    {
+      "path": "/api/heartbeat",
+      "schedule": "*/30 * * * *"
+    }
+  ]
 }
 ```
 
-### 6.2 Recipe 2: Consult CTO
+The Vercel Cron hits a Next.js API route that calls the Python engine's heartbeat trigger endpoint.
 
-```python
-# recipes/consult.py
+### 11.4 Railway Dockerfile
 
-CONSULT_PROMPT = """
-You are Chronos, a strategic thinking partner for a CTO.
-You are grounded in the owner's knowledge — the domain cartridge in your context
-contains their captured signals and mental models.
-
-Your workflow:
-1. Assess the request scope. Is it a retrieve (find existing knowledge) or
-   synthesize (create new analysis)?
-2. If the request is underspecified, use `ask_clarification` with grounded questions.
-   Each question MUST cite a signal path from the cartridge.
-3. If you have enough understanding, synthesize findings into a structured artifact
-   using `create_artifact`.
-4. Every claim must have a source. If you use training knowledge, label it explicitly.
-5. Include a confidence score reflecting how well-grounded the output is in vault signals.
-6. After creating the artifact, use `publish_and_notify` then `pause_for_review`.
-
-NEVER output intermediate reasoning to the user. Only surface output at gates:
-clarification, synthesis, blocked, or error.
-"""
-
-TOOLS = [
-    ask_clarification,      # → clarification gate
-    search_vault,           # retrieve matching signals
-    create_artifact,        # structured artifact with confidence + citations
-    render_html,            # structured → HTML
-    publish_and_notify,     # publish to web, notify messaging
-    pause_for_review,       # → awaiting_review gate
-    report_blocked,         # → blocked gate
-    revise_artifact,        # update existing artifact in-place
-]
-
-GATE_CONDITIONS = {
-    "ask_clarification": "clarification",
-    "pause_for_review": "awaiting_review",
-    "report_blocked": "blocked",
-}
-```
-
-### 6.3 Recipe 3: Memory Promotion
-
-```python
-# recipes/promotion.py
-
-PROMOTION_PROMPT = """
-You are the Chronos memory promotion engine. You analyze accumulated signals
-for stable patterns that deserve promotion to long-term memory (vault).
-
-Your workflow:
-1. Review all classified signals from the past period
-2. Identify reinforced themes (multiple signals supporting the same pattern)
-3. For each candidate pattern:
-   - If clearly durable: use `promote_to_vault`
-   - If ambiguous: use `flag_for_review`
-   - If noise: use `archive_signal`
-4. Scan for contradictions between existing vault signals and new patterns.
-   Surface contradictions using `surface_contradiction`.
-5. Scan for novel connections across different radar categories.
-   Surface connections using `surface_connection`.
-6. After processing all candidates, use `publish_promotion_summary` then `pause_for_review`.
-"""
-
-TOOLS = [
-    promote_to_vault,
-    archive_signal,
-    flag_for_review,
-    surface_contradiction,
-    surface_connection,
-    publish_promotion_summary,
-    pause_for_review,
-    report_blocked,
-]
+```dockerfile
+FROM python:3.12-slim
+WORKDIR /app
+COPY engine/ .
+RUN pip install -e .
+CMD ["python", "-m", "chronos.main"]
 ```
 
 ---
 
-## 7. Skills (Agent Tools)
+## 12. Implementation Task Breakdown (Revised)
 
-Each skill is a `@beta_tool` function. Skills are the PCAM Agency layer — the tools Claude uses to act.
+### Phase 0: Prerequisites (manual)
 
-### 7.1 classify.py
+| Task | What | Who |
+|------|------|-----|
+| **T0a** | Create Anthropic API key | Owner |
+| **T0b** | Create VoyageAI API key (for embeddings) | Owner |
+| **T0c** | Create Discord app + bot in Developer Portal, enable `message_content` intent, get token | Owner |
+| **T0d** | Create Discord test server (guild), invite bot | Owner |
+| **T0e** | Create Langfuse Cloud account, get keys | Owner |
+| **T0f** | Create Neon Postgres (pgvector enabled) via Vercel | Owner |
+| **T0g** | Create Upstash Redis via Vercel | Owner |
+| **T0h** | Create Railway account, link to repo | Owner |
 
-```python
-from anthropic import beta_tool
-
-@beta_tool
-async def classify_signal(signal_id: str, radar_category: str, confidence: float) -> str:
-    """Classify a signal into a radar category with a confidence score.
-
-    Args:
-        signal_id: UUID of the signal to classify
-        radar_category: The radar category name (e.g., 'ai-intelligence', 'technology')
-        confidence: Classification confidence between 0.0 and 1.0
-    """
-    await update_signal_classification(signal_id, radar_category, confidence)
-    await log_decision(
-        decision_type="classification",
-        input={"signal_id": signal_id},
-        output={"radar_category": radar_category},
-        confidence=confidence,
-    )
-    return f"Signal {signal_id} classified as {radar_category} (confidence: {confidence})"
-
-@beta_tool
-async def flag_for_review(signal_id: str, reason: str, candidate_categories: list[str]) -> str:
-    """Flag a signal for owner review due to low classification confidence.
-
-    Args:
-        signal_id: UUID of the signal to flag
-        reason: Why this signal is ambiguous
-        candidate_categories: List of possible radar categories
-    """
-    await update_signal_status(signal_id, "review_pending")
-    await create_review_item(signal_id, reason, candidate_categories)
-    return f"Signal {signal_id} flagged for owner review"
-```
-
-### 7.2 synthesize.py
-
-```python
-@beta_tool
-async def create_artifact(
-    title: str,
-    sections: list[dict],
-    sources: list[dict],
-    confidence: float,
-    training_sourced_claims: list[str],
-    confidence_gaps: list[str],
-) -> str:
-    """Create a structured artifact from synthesis results.
-
-    Args:
-        title: Artifact title
-        sections: List of {heading, content} dicts
-        sources: List of {claim, signal_path} dicts tracing claims to vault signals
-        confidence: Overall confidence score (0.0-1.0)
-        training_sourced_claims: Claims that come from model training, not vault signals
-        confidence_gaps: Specific areas where more signals would increase confidence
-    """
-    artifact = await store_artifact(
-        structured={
-            "title": title,
-            "sections": sections,
-            "sources": sources,
-            "confidence": confidence,
-            "training_sourced": training_sourced_claims,
-            "confidence_gaps": confidence_gaps,
-        }
-    )
-    await log_decision(
-        decision_type="synthesis",
-        input={"title": title},
-        output={"artifact_id": str(artifact.id)},
-        confidence=confidence,
-        sources=[s["signal_path"] for s in sources],
-    )
-    return f"Artifact created: {artifact.id}"
-```
-
-### 7.3 Gate Tools (included in all recipes)
-
-```python
-@beta_tool
-def ask_clarification(questions: list[dict]) -> str:
-    """Ask the owner clarifying questions before proceeding.
-    Each question must include a signal_path citation from the domain cartridge.
-
-    Args:
-        questions: List of {question, signal_path, why_it_matters} dicts
-    """
-    # This tool triggers the clarification gate.
-    # The agent loop detects this tool call and surfaces questions to the user.
-    return "Questions presented to owner. Waiting for response."
-
-@beta_tool
-def pause_for_review(artifact_id: str, notification_text: str) -> str:
-    """Pause execution and wait for owner review of an artifact.
-
-    Args:
-        artifact_id: UUID of the artifact to review
-        notification_text: Compact notification text for messaging channel (< 280 chars)
-    """
-    return "Recipe paused. Owner notified."
-
-@beta_tool
-def report_blocked(reason: str, suggested_action: str) -> str:
-    """Report that the recipe cannot proceed due to a hard blocker.
-
-    Args:
-        reason: What is blocking progress
-        suggested_action: What the owner can do to unblock
-    """
-    return f"Blocked: {reason}"
-```
-
----
-
-## 8. Observability Setup
-
-### 8.1 setup.py
-
-```python
-import os
-from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
-from langfuse import get_client
-
-def init_observability():
-    """Initialize Langfuse + Anthropic auto-instrumentation."""
-    os.environ.setdefault("LANGFUSE_PUBLIC_KEY", "...")
-    os.environ.setdefault("LANGFUSE_SECRET_KEY", "...")
-    os.environ.setdefault("LANGFUSE_BASE_URL", "https://cloud.langfuse.com")
-
-    langfuse = get_client()
-    AnthropicInstrumentor().instrument()
-    return langfuse
-```
-
-### 8.2 Eval: Confidence Calibration
-
-```python
-async def eval_confidence_calibration(period_days: int = 30):
-    """
-    Detect if owner frequently overrides high-confidence classifications.
-    Run periodically (e.g., weekly).
-    """
-    overrides = await query_audit_log(
-        decision_type="review",
-        period_days=period_days,
-    )
-
-    high_conf_overrides = [
-        o for o in overrides
-        if o.confidence and o.confidence >= 0.7 and o.owner_feedback
-    ]
-
-    total_high_conf = await count_audit_entries(
-        decision_type="classification",
-        min_confidence=0.7,
-        period_days=period_days,
-    )
-
-    if total_high_conf > 0:
-        override_rate = len(high_conf_overrides) / total_high_conf
-        if override_rate > 0.2:  # more than 20% overridden
-            langfuse.create_score(
-                name="confidence_miscalibration",
-                value=override_rate,
-                data_type="NUMERIC",
-                comment=f"{len(high_conf_overrides)}/{total_high_conf} high-conf overridden",
-            )
-```
-
----
-
-## 9. Web Channel (FastAPI)
-
-### 9.1 routes.py
-
-```python
-from fastapi import FastAPI, HTTPException, Depends
-from chronos.web.auth import verify_artifact_token
-
-app = FastAPI()
-
-@app.get("/artifacts/{artifact_id}")
-async def get_artifact(artifact_id: str, token: str):
-    if not verify_artifact_token(artifact_id, token):
-        raise HTTPException(status_code=403, detail="Invalid token")
-    artifact = await load_artifact(artifact_id)
-    return HTMLResponse(artifact.html_content)
-
-@app.get("/review")
-async def review_queue(token: str):
-    if not verify_owner_token(token):
-        raise HTTPException(status_code=403, detail="Invalid token")
-    items = await load_review_items()
-    return render_review_surface(items)
-
-@app.post("/review/{item_id}/action")
-async def review_action(item_id: str, action: ReviewAction, token: str):
-    if not verify_owner_token(token):
-        raise HTTPException(status_code=403, detail="Invalid token")
-
-    if action.type == "reclassify":
-        await reclassify_signal(item_id, action.new_category)
-    elif action.type == "reject":
-        await reject_signal(item_id)
-    elif action.type == "approve":
-        await approve_artifact(item_id)
-    elif action.type == "feedback":
-        await resume_recipe(item_id, {"feedback": action.text})
-
-    await log_decision(decision_type="review", ...)
-
-@app.post("/webhooks/whatsapp")
-async def whatsapp_webhook(request: Request):
-    """WhatsApp inbound webhook."""
-    data = await request.json()
-    envelope = normalize_whatsapp(data)
-    await handle_inbound(envelope)
-    return {"status": "ok"}
-```
-
----
-
-## 10. Heartbeat Scheduler
-
-```python
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
-scheduler = AsyncIOScheduler()
-
-@scheduler.scheduled_job("interval", minutes=30)
-async def heartbeat_classify():
-    """Fast loop: classify unclassified signals."""
-    unclassified = await load_unclassified_signals()
-    if not unclassified:
-        return
-
-    cartridge = await load_cartridge(
-        query=" ".join([s.raw_text[:100] for s in unclassified]),
-        role="cto",
-    )
-
-    recipe = load_recipe("capture_classify")
-    await run_recipe(
-        recipe_run_id=create_recipe_run("capture_classify"),
-        recipe_prompt=recipe.prompt,
-        tools=recipe.tools,
-        messages=format_classification_input(unclassified, cartridge),
-        gate_conditions=recipe.gate_conditions,
-        session_id=None,
-    )
-
-# Long cadence: configurable, default monthly
-@scheduler.scheduled_job("cron", day=1, hour=2)  # 1st of each month at 2am
-async def heartbeat_promote():
-    """Long loop: promote patterns from signal store to vault."""
-    recipe = load_recipe("promotion")
-    await run_recipe(...)
-```
-
----
-
-## 11. Implementation Task Breakdown
-
-Each task is scoped to fit in a single context window (~50k tokens of code + conversation). Tasks are sequenced as a DAG.
-
-### Phase 1: Foundation (all parallel)
+### Phase 1: Foundation (parallel)
 
 | Task | Scope | Files | Est. Lines |
 |------|-------|-------|-----------|
-| **T1: Postgres schema + migrations** | Create all tables from §1, Alembic setup | `db/migrations/`, `alembic.ini` | ~200 |
-| **T2: Config + project scaffold** | `pyproject.toml`, config, `__init__` files, env setup | `src/chronos/config.py`, `pyproject.toml`, `.env.example` | ~150 |
-| **T3: Observability setup** | Langfuse init, `AnthropicInstrumentor`, `@observe` helpers | `src/chronos/observability/setup.py` | ~50 |
+| **T1: DB schema + migrations** | All tables from §1 including pgvector, vault_signals, signal_relationships | `db/migrations/` | ~250 |
+| **T2: Python engine scaffold** | `pyproject.toml`, config, `__init__` files, env setup, Dockerfile | `engine/chronos/config.py`, `pyproject.toml`, `Dockerfile` | ~150 |
+| **T3: Next.js scaffold** | `create-next-app`, Tailwind, Drizzle/Prisma setup, env config | `web/` scaffold | ~100 |
+| **T4: CTO seed data + embed script** | 7 radar definitions, 10-15 seed signals, embedding script | `vault/`, `engine/chronos/scripts/seed.py` | ~600 |
+| **T5: Observability setup** | Langfuse init, `AnthropicInstrumentor` | `engine/chronos/observability/setup.py` | ~50 |
 
-### Phase 2: Memory Layer (depends on T1)
-
-| Task | Scope | Files | Est. Lines |
-|------|-------|-------|-----------|
-| **T4: Signal store CRUD** | Store, query, update status, filter by status | `src/chronos/memory/signal_store.py` | ~120 |
-| **T5: Session manager** | CRUD, STM persistence/restore, session commands | `src/chronos/sessions/manager.py`, `src/chronos/memory/stm.py` | ~150 |
-| **T6: Audit log** | Append-only write, query with filters | `src/chronos/memory/audit_log.py` | ~80 |
-| **T7: Artifact store** | CRUD, token generation, HTML storage | `src/chronos/memory/artifacts.py` | ~80 |
-| **T8: Vault reader** | Load radars from filesystem, load signals by radar, keyword matching | `src/chronos/memory/vault.py` | ~100 |
-
-### Phase 3: Core Engine (depends on T3, T5, T6)
+### Phase 2: Memory Layer (depends on T1, T2)
 
 | Task | Scope | Files | Est. Lines |
 |------|-------|-------|-----------|
-| **T9: Agent loop + gates** | `tool_runner` wrapper, state persistence, gate detection, resume handler | `src/chronos/engine/agent_loop.py`, `gates.py`, `resume.py` | ~250 |
-| **T10: Recipe loader** | Load recipe definitions (prompt, tools, gates) | `src/chronos/engine/recipe_loader.py` | ~60 |
-| **T11: Domain cartridge loader** | Radar scanning, signal matching, token budgeting, STM population | `src/chronos/engine/cartridge.py` | ~150 |
-| **T12: Trust layer** | Owner verification, rejection logging | `src/chronos/trust/auth.py` | ~40 |
+| **T6: Signal store + embedding pipeline** | Store, query, update status, embed on write | `signal_store.py`, `embeddings.py` | ~200 |
+| **T7: Vault reader + vector search** | Load radars, vector search vault_signals, keyword boost | `vault.py`, `embeddings.py` | ~150 |
+| **T8: Session manager + STM** | CRUD, STM persistence/restore | `sessions/manager.py`, `memory/stm.py` | ~150 |
+| **T9: Audit log** | Append-only write, query with filters | `memory/audit_log.py` | ~80 |
+| **T10: Artifact store** | CRUD, token generation | `memory/artifacts.py` | ~80 |
+| **T11: Signal relationships** | CRUD, find contradictions, find clusters | `memory/relationships.py` | ~120 |
 
-### Phase 4: Channels (depends on T4, T9, T12)
-
-| Task | Scope | Files | Est. Lines |
-|------|-------|-------|-----------|
-| **T13: Message envelope + gateway** | Envelope dataclass, inbound dispatch, intent detection, output router | `src/chronos/channels/envelope.py`, `gateway.py`, `router.py` | ~200 |
-| **T14: Discord adapter** | Bot setup, message listener, slash commands (`/session`, `/ask`), normalizer | `src/chronos/channels/discord_adapter.py` | ~150 |
-| **T15: WhatsApp adapter** | Webhook handler, normalizer, outbound sender | `src/chronos/channels/whatsapp_adapter.py` | ~100 |
-| **T16: Web channel (FastAPI)** | Artifact serving, review surface, token auth, Jinja2 templates | `src/chronos/web/routes.py`, `auth.py`, `templates/` | ~250 |
-
-### Phase 5: Skills (depends on T4, T6, T7, T8, T11)
+### Phase 3: Core Engine (depends on T5, T7, T8, T9)
 
 | Task | Scope | Files | Est. Lines |
 |------|-------|-------|-----------|
-| **T17: Classification skill** | `classify_signal`, `flag_for_review` tools | `src/chronos/skills/classify.py` | ~80 |
-| **T18: Research + synthesis skills** | `search_vault`, `create_artifact` tools | `src/chronos/skills/research.py`, `synthesize.py` | ~150 |
-| **T19: Render + publish skills** | `render_html`, `publish_and_notify` tools | `src/chronos/skills/render.py`, `publish.py`, `notify.py` | ~120 |
-| **T20: Gate tools** | `ask_clarification`, `pause_for_review`, `report_blocked` | Gate tools in `src/chronos/skills/` | ~60 |
-| **T21: Promotion skills** | `promote_to_vault`, `archive_signal`, `surface_contradiction`, `surface_connection` | `src/chronos/skills/promote.py`, `review.py` | ~120 |
+| **T12: Agent loop + gates** | `tool_runner` wrapper, state persistence, gate detection, resume | `engine/agent_loop.py`, `gates.py`, `resume.py` | ~250 |
+| **T13: Recipe loader** | Load recipe definitions | `engine/recipe_loader.py` | ~60 |
+| **T14: Domain cartridge (RAG)** | Embed query, vector search, keyword boost, token budget, STM load | `engine/cartridge.py` | ~150 |
+| **T15: Trust layer** | Owner verification, rejection logging | `trust/auth.py` | ~40 |
 
-### Phase 6: Recipes (depends on T9, T10, T17-T21)
-
-| Task | Scope | Files | Est. Lines |
-|------|-------|-------|-----------|
-| **T22: Recipe 1 — Capture & Classify** | System prompt, tool set, heartbeat trigger | `src/chronos/recipes/capture.py`, `src/chronos/scheduler/heartbeat.py` | ~100 |
-| **T23: Recipe 2 — Consult CTO** | System prompt, tool set, clarify/synthesize flow | `src/chronos/recipes/consult.py` | ~80 |
-| **T24: Recipe 3 — Memory Promotion** | System prompt, tool set, long-cadence trigger | `src/chronos/recipes/promotion.py` | ~80 |
-
-### Phase 7: Integration + App Startup (depends on all above)
+### Phase 4: Channels + Web (depends on T6, T12, T15)
 
 | Task | Scope | Files | Est. Lines |
 |------|-------|-------|-----------|
-| **T25: Main app** | FastAPI app, Discord bot startup, scheduler start, observability init | `src/chronos/main.py` | ~80 |
-| **T26: CTO seed data** | Radar definitions, seed signals for testing | `vault/radars/*.md`, `vault/signals/**/*.md` | ~500 (content) |
+| **T16: Envelope + gateway + router** | Envelope, inbound dispatch, intent detection, output routing | `channels/envelope.py`, `gateway.py`, `router.py` | ~200 |
+| **T17: Discord adapter** | Bot setup, slash commands (`/session`, `/ask`), message capture | `channels/discord_adapter.py` | ~150 |
+| **T18: Engine internal API** | FastAPI routes for review actions, heartbeat trigger, status | `api/routes.py`, `api/auth.py` | ~100 |
+| **T19: Web — artifact pages** | `/artifacts/[id]` with confidence, citations, training labels | `web/src/app/artifacts/` | ~200 |
+| **T20: Web — review surfaces** | `/review` queue, `/review/[id]` with actions, engine API calls | `web/src/app/review/` | ~250 |
+| **T21: Web — session + audit pages** | `/sessions`, `/decisions` with filters | `web/src/app/sessions/`, `web/src/app/decisions/` | ~200 |
+
+### Phase 5: Skills (depends on T6, T7, T9, T10, T11, T14)
+
+| Task | Scope | Files | Est. Lines |
+|------|-------|-------|-----------|
+| **T22: Classification skill** | `classify_signal`, `flag_for_review` (uses RAG for suggestions) | `skills/classify.py` | ~100 |
+| **T23: Research + synthesis skills** | `search_vault` (vector), `create_artifact` (with confidence) | `skills/research.py`, `synthesize.py` | ~150 |
+| **T24: Publish + notify skills** | `publish_artifact`, `notify_discord` | `skills/publish.py`, `notify.py` | ~80 |
+| **T25: Gate tools** | `ask_clarification`, `pause_for_review`, `report_blocked` | `skills/gates.py` | ~60 |
+| **T26: Promotion skills** | `promote_to_vault`, `archive_signal`, `discover_relationships`, `surface_contradiction`, `surface_connection` | `skills/promote.py` | ~150 |
+
+### Phase 6: Recipes (depends on T12, T13, T22-T26)
+
+| Task | Scope | Files | Est. Lines |
+|------|-------|-------|-----------|
+| **T27: Recipe 1 — Capture & Classify** | System prompt, tool set, heartbeat trigger | `recipes/capture.py`, `scheduler/heartbeat.py` | ~120 |
+| **T28: Recipe 2 — Consult CTO** | System prompt, tool set, clarify/synthesize flow | `recipes/consult.py` | ~100 |
+| **T29: Recipe 3 — Memory Promotion** | System prompt, tool set, relationship discovery, long-cadence trigger | `recipes/promotion.py` | ~100 |
+
+### Phase 7: Integration + Deploy (depends on all above)
+
+| Task | Scope | Files | Est. Lines |
+|------|-------|-------|-----------|
+| **T30: Python main** | Discord bot + scheduler + internal API startup, observability init | `chronos/main.py` | ~80 |
+| **T31: Vercel config** | `vercel.json` cron, env vars, build config | `web/vercel.json` | ~20 |
+| **T32: Railway deploy** | Dockerfile, env vars, deploy config | `engine/Dockerfile`, Railway config | ~30 |
 
 ### Phase 8: Tests (depends on relevant phases)
 
-| Task | Scope | Files | Scenarios |
-|------|-------|-------|-----------|
-| **T27: Capture + classify tests** | SC-CAP-*, SC-CLS-* | `tests/test_capture.py`, `test_classify.py` | 9 |
-| **T28: Consult tests** | SC-CON-*, SC-GAT-*, SC-CNF-* | `tests/test_consult.py`, `test_gates.py`, `test_confidence.py` | 14 |
-| **T29: Promotion tests** | SC-MEM-* | `tests/test_promotion.py` | 4 |
-| **T30: Review + session + channel tests** | SC-REV-*, SC-SES-*, SC-CHN-* | `tests/test_review.py`, `test_sessions.py`, `test_channels.py` | 14 |
-| **T31: Trust + audit + integration tests** | SC-TRU-*, SC-AUD-*, SC-PHX-*, SC-OBS-*, SC-DOM-* | `tests/test_trust.py`, `test_audit.py`, `test_integration.py`, `test_observability.py` | 13 |
+| Task | Scope | Scenarios |
+|------|-------|-----------|
+| **T33: Capture + classify tests** | SC-CAP-*, SC-CLS-* | 9 |
+| **T34: Consult tests** | SC-CON-*, SC-GAT-*, SC-CNF-* | 14 |
+| **T35: Promotion tests** | SC-MEM-* | 4 |
+| **T36: Review + session + channel tests** | SC-REV-*, SC-SES-*, SC-CHN-* | 14 |
+| **T37: Trust + audit + integration tests** | SC-TRU-*, SC-AUD-*, SC-PHX-*, SC-OBS-*, SC-DOM-* | 13 |
 
 ### Task DAG
 
 ```
-T1  T2  T3              ← Phase 1 (parallel)
-│   │   │
-├───┼───┤
-│       │
-T4 T5 T6 T7 T8         ← Phase 2 (parallel, need T1)
-│  │  │  │  │
-├──┼──┼──┼──┤
-│          │
-T9 T10 T11 T12         ← Phase 3 (parallel, need Phase 2)
-│   │   │   │
-├───┼───┼───┤
-│           │
-T13 T14 T15 T16        ← Phase 4 (parallel, need Phase 3)
+T0a-T0h (manual prerequisites)
+    │
+T1  T2  T3  T4  T5          ← Phase 1 (parallel)
+│   │   │   │   │
+├───┼───┼───┼───┤
 │               │
-T17 T18 T19 T20 T21    ← Phase 5 (parallel, need Phase 2+3)
+T6  T7  T8  T9  T10  T11    ← Phase 2 (parallel)
+│   │   │   │   │     │
+├───┼───┼───┼───┼─────┤
+│                     │
+T12  T13  T14  T15           ← Phase 3 (parallel)
+│    │    │    │
+├────┼────┼────┤
+│              │
+T16 T17 T18 T19 T20 T21     ← Phase 4 (parallel)
+│                    │
+T22 T23 T24 T25 T26          ← Phase 5 (parallel)
 │               │
 ├───────────────┤
 │               │
-T22  T23  T24           ← Phase 6 (parallel, need Phase 3+5)
+T27  T28  T29                ← Phase 6 (parallel)
 │    │    │
 ├────┼────┤
 │
-T25  T26                ← Phase 7 (need all above)
+T30  T31  T32                ← Phase 7 (parallel)
 │
-T27 T28 T29 T30 T31    ← Phase 8 (parallel test suites)
+T33 T34 T35 T36 T37          ← Phase 8 (parallel test suites)
 ```
 
-**Total: 31 tasks, 8 phases, ~3200 lines of application code + tests**
-
-Each task produces 40-250 lines of code — well within a single context window. Dependencies are explicit. Parallel tasks within each phase can be executed simultaneously.
+**Total: 37 tasks (8 prereqs + 29 implementation), 8 phases, ~4000 lines across Python + TypeScript**
