@@ -1,6 +1,6 @@
 # Chronos v1 — Low-Level Design
 
-> Implementation blueprint derived from the product spec (v4.0.0) and technical approach (v1.1.0).
+> Implementation blueprint derived from the product spec (v4.0.0) and technical approach (v2.0.0).
 > Each section is scoped to fit a single implementation context window.
 
 **Version:** 2.0.0
@@ -21,7 +21,7 @@ Both share **Neon Postgres** (with pgvector) as the system of record. The Python
 ```
 ┌─────────────────────┐     ┌──────────────────────────┐
 │   Python Engine      │     │   Next.js Web (Vercel)   │
-│   (Railway)   │     │                          │
+│   (Railway)          │     │                          │
 │                      │     │  /artifacts/[id]         │
 │  Discord Bot (WS)    │◄───►│  /review                 │
 │  Agent Loop          │ API │  /api/heartbeat          │
@@ -75,7 +75,7 @@ Both share **Neon Postgres** (with pgvector) as the system of record. The Python
 ### Day 1 Scope
 
 - **Discord only** — WhatsApp deferred
-- **Vercel** for web, **Railway or Fly.io** for Python engine
+- **Vercel** for web, **Railway** for Python engine
 - **Neon Postgres** with pgvector enabled
 - **Upstash Redis** for scheduling state
 
@@ -147,7 +147,8 @@ chronos/
 │   │   │   ├── vault.py            # Vault read/write (radars + signals)
 │   │   │   ├── embeddings.py       # Embedding pipeline (voyage-3)
 │   │   │   ├── audit_log.py        # Decision audit log (append-only)
-│   │   │   └── artifacts.py        # Artifact CRUD
+│   │   │   ├── artifacts.py        # Artifact CRUD
+│   │   │   └── relationships.py   # Signal relationships (graph layer)
 │   │   │
 │   │   ├── sessions/
 │   │   │   └── manager.py          # Session CRUD, STM persistence/restore
@@ -392,7 +393,6 @@ CREATE TABLE radars (
 ### 2.1 Embedding Pipeline (Python)
 
 ```python
-from anthropic import Anthropic  # or openai for text-embedding-3-small
 import httpx
 
 EMBEDDING_MODEL = "voyage-3"
@@ -602,7 +602,7 @@ async def discover_relationships(signal_ids: list[str]) -> str:
 ### 4.1 Agent Loop
 
 ```python
-from anthropic import Anthropic, beta_tool
+from anthropic import Anthropic
 from langfuse import observe
 
 @observe(name="agent_loop")
@@ -727,9 +727,10 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 @bot.tree.command(name="capture", description="Capture a thought or signal")
 @app_commands.describe(text="Your thought, signal, or article")
 async def capture_cmd(interaction: discord.Interaction, text: str):
+    await interaction.response.defer(ephemeral=True)
     envelope = normalize_discord_interaction(interaction, command="capture", text=text)
     await handle_command(envelope)
-    await interaction.response.send_message("✓", ephemeral=True, delete_after=2)
+    # Silent — no followup message. Capture is the post-office model.
 
 @bot.tree.command(name="ask", description="Ask Chronos a strategic question")
 @app_commands.describe(question="Your question")
@@ -894,7 +895,7 @@ The Python engine exposes a small FastAPI app for the Next.js web to call:
 
 ```python
 # api/routes.py
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Depends
 
 app = FastAPI()
 
@@ -902,27 +903,27 @@ async def verify_engine_secret(authorization: str = Header()):
     if authorization != f"Bearer {ENGINE_API_SECRET}":
         raise HTTPException(status_code=403)
 
-@app.post("/review/{item_id}/action", dependencies=[Depends(verify_engine_secret)])
-async def review_action(item_id: str, body: ReviewActionBody):
+@app.post("/api/v1/review/{id}/action", dependencies=[Depends(verify_engine_secret)])
+async def review_action(id: str, body: ReviewActionBody):
     if body.action == "reclassify":
-        await reclassify_signal(item_id, body.new_category)
+        await reclassify_signal(id, body.new_category)
     elif body.action == "reject":
-        await reject_signal(item_id)
+        await reject_signal(id)
     elif body.action == "approve":
-        await approve_artifact(item_id)
+        await approve_artifact(id)
     elif body.action == "feedback":
-        await resume_recipe(item_id, {"feedback": body.text})
-    return {"status": "ok"}
+        await resume_recipe(id, {"feedback": body.feedback})
+    return {"status": "ok", "item_id": id, "action": body.action}
 
 @app.post("/api/v1/heartbeat/classify", dependencies=[Depends(verify_engine_secret)])
 async def trigger_heartbeat():
     """Vercel Cron calls this to trigger classification heartbeat."""
-    await heartbeat_classify()
-    return {"status": "ok"}
+    result = await heartbeat_classify()
+    return {"status": "ok", "signals_processed": result.count}
 
-@app.get("/status")
+@app.get("/api/v1/status")
 async def health():
-    return {"status": "healthy"}
+    return {"status": "healthy", "discord_connected": bot.is_ready(), "db_connected": True}
 ```
 
 ---
@@ -1167,7 +1168,7 @@ Each phase delivers a working end-to-end capability. After each phase, the liste
 |---|-------|-----------|
 | 1.1 | Python engine scaffold: `pyproject.toml`, config, Dockerfile, DB connection | `engine/` scaffold |
 | 1.2 | Next.js scaffold: `create-next-app`, Tailwind, Drizzle ORM, DB connection | `web/` scaffold |
-| 1.3 | DB schema: `signals`, `radars` tables + pgvector extension | `db/schema.sql` |
+| 1.3 | DB schema: `signals`, `radars`, `audit_log` tables + pgvector extension | `db/schema.sql` |
 | 1.4 | Signal store: insert signal + embed on write | `memory/signal_store.py`, `embeddings.py` |
 | 1.5 | Trust layer: owner verification, rejection logging | `trust/auth.py` |
 | 1.6 | Discord adapter: bot startup, message listener, envelope normalization | `channels/discord_adapter.py`, `envelope.py` |
@@ -1185,10 +1186,9 @@ Each phase delivers a working end-to-end capability. After each phase, the liste
 | SC-CAP-003 | Capture stores before processing | Automated |
 | SC-CAP-004 | Unknown author rejected | Automated |
 | SC-TRU-001 | Owner authenticated and accepted | Automated |
-| SC-TRU-002 | Non-owner rejected | Automated |
-| SC-OBS-001 | Langfuse trace created (capture path) | Automated |
+| SC-TRU-002 | Non-owner rejected (audit log entry) | Automated |
 
-**Exit gate:** 7 scenarios passing. Bot running in Discord test server. Signals appearing in Neon Postgres.
+**Exit gate:** 6 scenarios passing. Bot running in Discord test server. Signals appearing in Neon Postgres.
 
 ---
 
@@ -1200,7 +1200,7 @@ Each phase delivers a working end-to-end capability. After each phase, the liste
 
 | # | Scope | Key Files |
 |---|-------|-----------|
-| 2.1 | DB schema: `vault_signals`, `audit_log`, `recipe_runs` tables | `db/schema.sql` |
+| 2.1 | DB schema: `vault_signals`, `recipe_runs` tables (audit_log already created in Phase 1) | `db/schema.sql` |
 | 2.2 | CTO seed data: 7 radars + 10-15 signals as markdown files | `vault/radars/*.md`, `vault/signals/**/*.md` |
 | 2.3 | Vault seed script: read markdown → embed → upsert to Postgres | `scripts/seed.py` |
 | 2.4 | Vault reader + vector search (RAG) | `memory/vault.py` |
@@ -1225,8 +1225,9 @@ Each phase delivers a working end-to-end capability. After each phase, the liste
 | SC-AUD-001 | Classification decisions logged with all fields | Automated |
 | SC-DOM-001 | CTO cartridge loads appropriate signals | Hybrid |
 | SC-PHX-002 | Recipe chain visible in Langfuse (not collapsed) | Automated |
+| SC-OBS-001 | Langfuse trace created (recipe run) | Automated |
 
-**Exit gate:** 8 scenarios passing. Heartbeat running. Signals being classified. Audit log populated.
+**Exit gate:** 9 scenarios passing. Heartbeat running. Signals being classified. Audit log populated.
 
 ---
 
@@ -1381,9 +1382,9 @@ Each phase delivers a working end-to-end capability. After each phase, the liste
 
 | # | Scope | Key Files |
 |---|-------|-----------|
-| 7.1 | Web: decision audit log page (`/decisions`) with filters | `web/src/app/decisions/` |
+| 7.1 | Web: decision audit log page (`/decisions`) with Drizzle query filters | `web/src/app/decisions/` |
 | 7.2 | Web: session list + detail pages (`/sessions`) | `web/src/app/sessions/` |
-| 7.3 | Audit log query API with filters | Engine API update |
+| 7.3 | Audit log Drizzle query with filters (direct DB read, no engine API) | `web/src/lib/db.ts` |
 | 7.4 | Langfuse evals: confidence calibration, pattern deviation | `observability/` |
 | 7.5 | Cross-channel session: same session from different interactions | Wiring |
 | 7.6 | Tests for this phase | Remaining test files |
@@ -1423,8 +1424,8 @@ Each phase delivers a working end-to-end capability. After each phase, the liste
 | Phase | Delivers | Scenarios Passing | Cumulative |
 |-------|----------|-------------------|-----------|
 | 0 | Infrastructure accounts + credentials | — | 0 |
-| 1 | Silent capture + trust | 7 | 7 |
-| 2 | Vault + heartbeat classification | 8 | 15 |
+| 1 | Silent capture + trust | 6 | 6 |
+| 2 | Vault + heartbeat classification | 9 | 15 |
 | 3 | Capture review (web + notification) | 5 | 20 |
 | 4 | Consult CTO (clarify + synthesize + sessions) | 21 | 41 |
 | 5 | Consult review + revision | 4 | 45 |

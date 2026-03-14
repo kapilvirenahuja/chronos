@@ -317,13 +317,14 @@ The Python engine exposes a headless REST API consumed by the Next.js web app. B
 }
 ```
 
-### Review Action Response
+### Review Action Response (200)
 
 ```json
 {
-  "status": "ok | error",
-  "recipe_run_id": "uuid (if recipe resumed)",
-  "error": "string (if error)"
+  "status": "ok",
+  "item_id": "uuid",
+  "action": "string",
+  "recipe_run_id": "uuid | null (populated if recipe was resumed)"
 }
 ```
 
@@ -331,10 +332,12 @@ The Python engine exposes a headless REST API consumed by the Next.js web app. B
 
 ```json
 {
-  "feedback": "string",
-  "action": "revise | approve"
+  "action": "revise | approve",
+  "feedback": "string (required for revise, null for approve)"
 }
 ```
+
+The full API contract with all response shapes, error codes, and shared data types is defined in `memory/standards/api/engine-api-contract.md`.
 
 ---
 

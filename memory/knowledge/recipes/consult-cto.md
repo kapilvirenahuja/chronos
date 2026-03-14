@@ -36,6 +36,8 @@ queued → running → publishing → awaiting_review → revising → completed
 - NO intermediate output — only valid gate output reaches the user
 - Artifact revision is in-place (same ID), audit log records feedback + changes
 
-## Scenarios
+## Primary Scenarios
 
-SC-CON-001 through SC-CON-007, SC-GAT-001 through SC-GAT-004, SC-CNF-001 through SC-CNF-003
+SC-CON-001 through SC-CON-007, SC-CNF-001 through SC-CNF-003
+
+Note: SC-GAT-* (response gates) apply to all recipes, not exclusively consult. Gate scenarios are tested primarily through the consult flow but the gate mechanism is shared.

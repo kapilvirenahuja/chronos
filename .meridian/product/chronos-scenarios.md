@@ -5,7 +5,7 @@
 
 **Version:** 1.0.0
 **Date:** 2026-03-14
-**Source Specs:** chronos-features.md v4.0.0, technical-approach.md v1.1.0
+**Source Specs:** chronos-features.md v4.0.0, technical-approach.md v2.0.0
 
 ---
 

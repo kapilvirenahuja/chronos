@@ -2,7 +2,7 @@
 
 Python engine + Next.js web. Two deployment units sharing one database.
 
-## Python Engine (Railway/Fly.io)
+## Python Engine (Railway)
 
 - **Long-running process**: Discord bot WebSocket, APScheduler heartbeats
 - **Agent loop**: Anthropic SDK `tool_runner` with compaction
@@ -19,7 +19,7 @@ Python engine + Next.js web. Two deployment units sharing one database.
 
 ## Communication
 
-- Next.js reads directly from Neon Postgres (Drizzle/Prisma)
+- Next.js reads directly from Neon Postgres (Drizzle ORM)
 - Next.js calls Python engine API for: review actions (resume recipe), heartbeat trigger
 - Engine API authenticated via shared secret (`ENGINE_API_SECRET`)
 - Engine sends Discord notifications; web generates artifact URLs

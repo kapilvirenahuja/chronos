@@ -114,7 +114,7 @@ Chronos is the personal AI for strategic leaders -- a system that captures your 
 - Capture-to-stored latency under 5 seconds across all channels
 - No measurable quality difference in downstream synthesis between channel sources
 
-**Time Horizon:** 0-9 months (Progressive rollout. v1: Discord, WhatsApp, Web. Later: Telegram, Voice, Claude Code CLI)
+**Time Horizon:** 0-9 months (Progressive rollout. v1: Discord, Web. Post-v1: WhatsApp, Telegram, Voice, Claude Code CLI)
 
 ---
 

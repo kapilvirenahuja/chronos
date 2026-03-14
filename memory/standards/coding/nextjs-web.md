@@ -9,7 +9,7 @@
 
 ## Database
 
-- Drizzle ORM or Prisma for type-safe Postgres queries
+- Drizzle ORM for type-safe Postgres queries
 - Read directly from Neon Postgres (no API proxy for reads)
 - Write operations that affect recipe state → call Python engine API
 

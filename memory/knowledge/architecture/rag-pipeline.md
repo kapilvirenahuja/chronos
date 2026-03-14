@@ -4,7 +4,7 @@ How Chronos uses embeddings and vector search for knowledge retrieval.
 
 ## Embedding Model
 
-`voyage-3` (1024 dimensions) via VoyageAI API. Alternatives: `text-embedding-3-small` (OpenAI).
+`voyage-3` (1024 dimensions) via VoyageAI API. Part of the Anthropic ecosystem — no OpenAI dependency.
 
 ## When Embeddings Are Created
 

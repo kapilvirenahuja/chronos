@@ -35,5 +35,6 @@ Thumbs.db
 # Ephemeral runtime
 .phoenix-os/
 
-# Meridian STM (issue-centric, ephemeral)
-.meridian/project/issues/
+# Meridian project artifacts (issue-centric, ephemeral)
+# Product docs (.meridian/product/) are intentionally tracked
+.meridian/project/

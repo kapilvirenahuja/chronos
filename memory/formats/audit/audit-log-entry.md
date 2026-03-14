@@ -7,9 +7,9 @@ Every decision logged to `audit_log` must contain these fields.
 | Field | Type | Description |
 |-------|------|-------------|
 | timestamp | TIMESTAMPTZ | When the decision was made |
-| recipe | VARCHAR(100) | Which recipe (capture_classify, consult_cto, promotion) |
-| session_id | UUID | Session context (nullable for heartbeat) |
-| decision_type | VARCHAR(50) | classification, synthesis, promotion, revision, review |
+| recipe | VARCHAR(100) | Which recipe (capture_classify, consult_cto, promotion). Nullable for trust_rejection |
+| session_id | UUID | Session context (nullable for heartbeat and trust_rejection) |
+| decision_type | VARCHAR(50) | classification, synthesis, promotion, revision, review, trust_rejection |
 | input | JSONB | What was being decided on |
 | output | JSONB | What the decision was |
 | confidence | FLOAT | Score at decision point (nullable) |
@@ -32,3 +32,4 @@ Every decision logged to `audit_log` must contain these fields.
 | promotion | Signal promoted to vault | Source signals that formed the pattern |
 | revision | Artifact revised after feedback | Original sources + feedback |
 | review | Owner reviews an item | Original classification sources |
+| trust_rejection | Non-owner message rejected | None (no recipe, no sources) |
