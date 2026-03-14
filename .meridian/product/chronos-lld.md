@@ -647,20 +647,30 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-@bot.tree.command(name="session", description="Manage sessions")
-@app_commands.describe(action="new|load|clear|list", topic="Session topic (for new)")
-async def session_cmd(interaction: discord.Interaction, action: str, topic: str = ""):
-    await interaction.response.defer()
-    envelope = normalize_discord_interaction(interaction, action, topic)
-    result = await route_session_command(envelope)
-    await interaction.followup.send(result)
+# --- Slash commands: direct recipe routing (no intent detection) ---
+
+@bot.tree.command(name="capture", description="Capture a thought or signal")
+@app_commands.describe(text="Your thought, signal, or article")
+async def capture_cmd(interaction: discord.Interaction, text: str):
+    envelope = normalize_discord_interaction(interaction, command="capture", text=text)
+    await handle_command(envelope)
+    await interaction.response.send_message("✓", ephemeral=True, delete_after=2)
 
 @bot.tree.command(name="ask", description="Ask Chronos a strategic question")
 @app_commands.describe(question="Your question")
 async def ask_cmd(interaction: discord.Interaction, question: str):
     await interaction.response.defer()
-    envelope = normalize_discord_interaction(interaction, question=question)
-    await start_consult(envelope)
+    envelope = normalize_discord_interaction(interaction, command="ask", text=question)
+    await handle_command(envelope)
+
+@bot.tree.command(name="session", description="Manage sessions")
+@app_commands.describe(action="new|load|clear|list", topic="Session topic (for new)")
+async def session_cmd(interaction: discord.Interaction, action: str, topic: str = ""):
+    await interaction.response.defer()
+    envelope = normalize_discord_interaction(interaction, command="session", text=f"{action} {topic}")
+    await handle_command(envelope)
+
+# --- Plain messages: intent detection via heuristic ---
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -671,25 +681,50 @@ async def on_message(message: discord.Message):
     await bot.process_commands(message)
 ```
 
-### 6.3 Gateway — Inbound Dispatch
+### 6.3 Routing: Three Layers
+
+**See `memory/knowledge/architecture/intent-detection.md` for the full design.**
 
 ```python
-async def handle_inbound(envelope: MessageEnvelope):
-    # 1. Trust check
+# Layer 1: Command routing — slash commands map directly to recipes
+async def handle_command(envelope: MessageEnvelope):
     if not verify_owner(envelope.sender_id):
         await log_rejection(envelope)
         return
 
-    # 2. Intent detection: capture or consult?
+    if envelope.command == "capture":
+        await store_signal(envelope)          # store + embed, silent
+    elif envelope.command == "ask":
+        await start_consult(envelope)         # start consult recipe
+    elif envelope.command == "session":
+        await route_session_command(envelope)  # session CRUD
+
+# Layer 2: Intent detection — free-form messages, keyword heuristic
+async def handle_inbound(envelope: MessageEnvelope):
+    if not verify_owner(envelope.sender_id):
+        await log_rejection(envelope)
+        return
+
     intent = detect_intent(envelope.text)
 
-    if intent == "capture":
-        await store_signal(envelope)     # store + embed, silent
-        return
-
-    if intent in ("retrieve", "synthesize"):
+    if intent == "consult":
         await start_consult(envelope)
-        return
+    else:
+        # Default: capture (post-office model)
+        await store_signal(envelope)
+
+def detect_intent(text: str) -> str:
+    """Keyword heuristic. Default is capture. Consult requires clear question pattern."""
+    consult_patterns = [
+        text.strip().endswith("?"),
+        text.lower().startswith(("what ", "how ", "why ", "should ", "compare ", "analyze ")),
+        "help me think" in text.lower(),
+        "what do i know about" in text.lower(),
+    ]
+    return "consult" if any(consult_patterns) else "capture"
+
+# Layer 3: Content classification — happens inside Recipe 1 heartbeat (LLM call, async)
+# NOT here. See recipes/capture.py and skills/classify.py.
 ```
 
 ---
